@@ -2,7 +2,7 @@
 
 Native CloudFormation for buyers who do not want Terraform. Same first-launch shape as the Terraform stack in this repo: VPC, ALB, ECS Fargate (web + worker), RDS PostgreSQL 16, ElastiCache Redis (TLS), Secrets Manager, KMS, and a private S3 evidence bucket.
 
-Subscribe on AWS Marketplace before you create the stack. The image is Marketplace ECR, not GHCR.
+Subscribe at https://aws.amazon.com/marketplace/pp?sku=8pjp6r3g4mw0nfmf8imsf9z1d before you create the stack. The image is Marketplace ECR, not GHCR.
 
 ## Console
 

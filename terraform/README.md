@@ -1,6 +1,6 @@
 # GRiCk on AWS ECS Fargate
 
-Buyer launch path: clone https://github.com/yumaitau/GRiCk-aws-deploy and start from the repository README. Subscribe on AWS Marketplace before `terraform apply`.
+Buyer launch path: clone https://github.com/yumaitau/GRiCk-aws-deploy and start from the repository README. Subscribe at https://aws.amazon.com/marketplace/pp?sku=8pjp6r3g4mw0nfmf8imsf9z1d before `terraform apply`.
 
 Terraform reference stack for a buyer-owned deployment in `ap-southeast-2`:
 

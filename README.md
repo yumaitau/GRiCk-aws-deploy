@@ -1,6 +1,6 @@
 # GRiCk AWS Marketplace deploy
 
-Public buyer artifacts for [GRiCk on AWS Marketplace](https://aws.amazon.com/marketplace). Subscribe in the AWS Marketplace console **before** you pull the image or create a stack. The publisher does not host your data.
+Public buyer artifacts for [GRiCk on AWS Marketplace](https://aws.amazon.com/marketplace/pp?sku=8pjp6r3g4mw0nfmf8imsf9z1d). Subscribe on that listing **before** you pull the image or create a stack. The publisher does not host your data.
 
 This repository is CloudFormation, Terraform, Helm, and IAM only. The application image lives in AWS Marketplace ECR:
 
