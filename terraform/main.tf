@@ -77,9 +77,11 @@ locals {
       { name = "AWS_MARKETPLACE_PRICING_MODEL", value = "contract" },
       { name = "AWS_MARKETPLACE_PRODUCT_CODE", value = var.marketplace_product_code },
       { name = "AWS_MARKETPLACE_PUBLIC_KEY_VERSION", value = tostring(var.marketplace_public_key_version) },
+      { name = "AWS_MARKETPLACE_ENFORCE_CONTAINER_LICENSE", value = var.marketplace_enforce_container_license ? "true" : "false" },
     ],
     var.marketplace_product_sku == "" ? [] : [
       { name = "AWS_MARKETPLACE_PRODUCT_SKU", value = var.marketplace_product_sku },
+      { name = "AWS_MARKETPLACE_LICENSE_CLIENT_TOKEN", value = "a8f3c2e1-4b5d-41e6-8a9b-0c1d2e3f4a5b" },
     ],
   )
 

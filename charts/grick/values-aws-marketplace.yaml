@@ -15,6 +15,7 @@
 #     --set env.BETTER_AUTH_URL=https://grick.example.com \
 #     --set env.AWS_MARKETPLACE_PRODUCT_CODE=<listing-product-code> \
 #     --set env.AWS_MARKETPLACE_PRODUCT_SKU=<listing-product-id> \
+#     --set env.AWS_MARKETPLACE_ENFORCE_CONTAINER_LICENSE=false \
 #     --set env.EVIDENCE_STORAGE_PROVIDER=s3 \
 #     --set env.EVIDENCE_S3_BUCKET=<your-bucket> \
 #     --set secretEnv.STORAGE_PROVIDER=s3 \
@@ -35,7 +36,7 @@
 
 image:
   repository: 709825985650.dkr.ecr.us-east-1.amazonaws.com/yuma-it/grick-aws
-  tag: "1.0.1"
+  tag: "1.0.2"
   pullPolicy: IfNotPresent
 
 imagePullSecrets: []
@@ -52,3 +53,5 @@ env:
   AWS_MARKETPLACE_ENABLED: "true"
   AWS_MARKETPLACE_FULFILLMENT: container
   AWS_MARKETPLACE_PRICING_MODEL: contract
+  # 1.0.1/1.0.2 request Unit=None. Set true after 1.0.3.
+  AWS_MARKETPLACE_ENFORCE_CONTAINER_LICENSE: "false"

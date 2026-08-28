@@ -85,6 +85,11 @@ run "secure_test_baseline" {
   }
 
   assert {
+    condition     = aws_ecs_service.web[0].deployment_circuit_breaker[0].enable && !aws_ecs_service.web[0].deployment_circuit_breaker[0].rollback
+    error_message = "First-create services must not request circuit-breaker rollback; ECS has no prior revision."
+  }
+
+  assert {
     condition     = aws_s3_bucket_public_access_block.evidence.block_public_policy
     error_message = "Evidence bucket must block public policies."
   }
@@ -143,6 +148,28 @@ run "migration_only_bootstrap" {
   assert {
     condition     = length(aws_ecs_service.web) == 0 && length(aws_ecs_service.worker) == 0
     error_message = "Bootstrap must be able to run migration before services exist."
+  }
+}
+
+run "marketplace_listing_image_skips_broken_checkout" {
+  command = plan
+
+  variables {
+    marketplace_product_code = "8pjp6r3g4mw0nfmf8imsf9z1d"
+    marketplace_product_sku  = "prod-vgebc2b2lowoq"
+  }
+
+  assert {
+    condition = anytrue([
+      for variable in local.marketplace_environment :
+      variable.name == "AWS_MARKETPLACE_ENFORCE_CONTAINER_LICENSE" && variable.value == "false"
+    ])
+    error_message = "Listing images 1.0.1/1.0.2 must not CheckoutLicense at boot."
+  }
+
+  assert {
+    condition     = aws_ecs_service.web[0].deployment_circuit_breaker[0].enable && !aws_ecs_service.web[0].deployment_circuit_breaker[0].rollback
+    error_message = "First-create services must not request circuit-breaker rollback."
   }
 }
 

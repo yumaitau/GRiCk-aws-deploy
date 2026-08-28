@@ -63,6 +63,12 @@ variable "marketplace_product_sku" {
   default     = ""
 }
 
+variable "marketplace_enforce_container_license" {
+  type        = bool
+  description = "Run CheckoutLicense at task boot. false for listing images 1.0.1/1.0.2, which request Unit=None and a new ClientToken per task and fail with No Entitlements Allowed. Set true for 1.0.3+."
+  default     = false
+}
+
 variable "marketplace_public_key_version" {
   type        = number
   description = "PublicKeyVersion from Seller Central for RegisterUsage (hourly test or fallback)."

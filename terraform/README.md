@@ -39,7 +39,8 @@ public registration.
 cd terraform
 cp terraform.tfvars.example terraform.tfvars
 # Pin container_image to the Marketplace ECR digest. Set marketplace_product_code
-# and marketplace_product_sku from the listing. Do not set a GHCR pull secret.
+# and marketplace_product_sku from the listing. Leave
+# marketplace_enforce_container_license=false on 1.0.1/1.0.2. Do not set a GHCR pull secret.
 terraform init
 terraform apply -var-file=terraform.tfvars
 terraform output application_url

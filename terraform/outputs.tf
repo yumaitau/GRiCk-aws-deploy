@@ -87,3 +87,18 @@ output "aws_region" {
   description = "Deployment region."
   value       = var.aws_region
 }
+
+output "stack_name" {
+  description = "Name prefix used for the ECS cluster and log groups."
+  value       = local.name
+}
+
+output "marketplace_product_sku" {
+  description = "License Manager ProductSKU used by CheckoutLicense. Empty disables the check."
+  value       = var.marketplace_product_sku
+}
+
+output "marketplace_enforce_container_license" {
+  description = "Whether tasks run CheckoutLicense at boot. false is required for listing images 1.0.1/1.0.2."
+  value       = var.marketplace_enforce_container_license
+}

@@ -23,6 +23,7 @@ Metadata:
           - MarketplaceProductCode
           - MarketplaceProductSku
           - MarketplacePublicKeyVersion
+          - MarketplaceEnforceContainerLicense
       - Label:
           default: Names
         Parameters:
@@ -56,6 +57,8 @@ Metadata:
         default: Listing product code
       MarketplaceProductSku:
         default: Listing product ID (SKU)
+      MarketplaceEnforceContainerLicense:
+        default: CheckoutLicense at boot (false on 1.0.2)
       CertificateArn:
         default: ACM certificate ARN (HTTPS)
       SesFromEmail:
@@ -76,7 +79,7 @@ Parameters:
 
   ContainerImage:
     Type: String
-    Default: "709825985650.dkr.ecr.us-east-1.amazonaws.com/yuma-it/grick-aws:1.0.1"
+    Default: "709825985650.dkr.ecr.us-east-1.amazonaws.com/yuma-it/grick-aws:1.0.2"
     AllowedPattern: ".*(@sha256:[0-9a-f]{64}|:[A-Za-z0-9][A-Za-z0-9_.-]{0,127})$"
     Description: Marketplace ECR image tag or digest. Do not use :latest.
 
@@ -95,6 +98,14 @@ Parameters:
     Default: 1
     MinValue: 1
     Description: PublicKeyVersion from Seller Central.
+
+  MarketplaceEnforceContainerLicense:
+    Type: String
+    Default: "false"
+    AllowedValues:
+      - "true"
+      - "false"
+    Description: Run CheckoutLicense at task boot. false for listing images 1.0.1/1.0.2. Set true after 1.0.3.
 
   VpcCidr:
     Type: String
@@ -1345,6 +1356,11 @@ Resources:
                 Value: !Sub "${MarketplacePublicKeyVersion}"
               - !Ref AWS::NoValue
             - !If
+              - HasMarketplace
+              - Name: AWS_MARKETPLACE_ENFORCE_CONTAINER_LICENSE
+                Value: !Ref MarketplaceEnforceContainerLicense
+              - !Ref AWS::NoValue
+            - !If
               - HasMarketplaceSku
               - Name: AWS_MARKETPLACE_PRODUCT_SKU
                 Value: !Ref MarketplaceProductSku
@@ -1482,6 +1498,11 @@ Resources:
                 Value: !Sub "${MarketplacePublicKeyVersion}"
               - !Ref AWS::NoValue
             - !If
+              - HasMarketplace
+              - Name: AWS_MARKETPLACE_ENFORCE_CONTAINER_LICENSE
+                Value: !Ref MarketplaceEnforceContainerLicense
+              - !Ref AWS::NoValue
+            - !If
               - HasMarketplaceSku
               - Name: AWS_MARKETPLACE_PRODUCT_SKU
                 Value: !Ref MarketplaceProductSku
@@ -1610,6 +1631,11 @@ Resources:
                 Value: !Sub "${MarketplacePublicKeyVersion}"
               - !Ref AWS::NoValue
             - !If
+              - HasMarketplace
+              - Name: AWS_MARKETPLACE_ENFORCE_CONTAINER_LICENSE
+                Value: !Ref MarketplaceEnforceContainerLicense
+              - !Ref AWS::NoValue
+            - !If
               - HasMarketplaceSku
               - Name: AWS_MARKETPLACE_PRODUCT_SKU
                 Value: !Ref MarketplaceProductSku
@@ -1656,7 +1682,7 @@ Resources:
       DeploymentConfiguration:
         DeploymentCircuitBreaker:
           Enable: true
-          Rollback: true
+          Rollback: false
       NetworkConfiguration:
         AwsvpcConfiguration:
           AssignPublicIp: DISABLED
@@ -1688,7 +1714,7 @@ Resources:
       DeploymentConfiguration:
         DeploymentCircuitBreaker:
           Enable: true
-          Rollback: true
+          Rollback: false
       NetworkConfiguration:
         AwsvpcConfiguration:
           AssignPublicIp: DISABLED

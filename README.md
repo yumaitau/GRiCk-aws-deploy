@@ -54,10 +54,11 @@ cp terraform.tfvars.example terraform.tfvars
 
 Edit `terraform.tfvars`:
 
-1. Pin `container_image` to this listing’s tag or digest (example uses `:1.0.1`).
+1. Pin `container_image` to this listing’s tag or digest (example uses `:1.0.2`).
 2. Set `marketplace_product_code` and `marketplace_product_sku` from the listing. Empty values disable the license check and Marketplace tasks will fail checkout.
-3. Set `allowed_ingress_cidrs` to your office, VPN, or client CIDR. Leave `allow_internet_ingress` false. `0.0.0.0/0` is rejected unless that flag is true.
-4. Leave `certificate_arn` and `ses_from_email` empty for a first HTTP launch without mail.
+3. Leave `marketplace_enforce_container_license` false on 1.0.1/1.0.2. Those images request the wrong License Manager unit and a new ClientToken per task, so CheckoutLicense fails with No Entitlements Allowed. Set it true after 1.0.3.
+4. Set `allowed_ingress_cidrs` to your office, VPN, or client CIDR. Leave `allow_internet_ingress` false. `0.0.0.0/0` is rejected unless that flag is true.
+5. Leave `certificate_arn` and `ses_from_email` empty for a first HTTP launch without mail.
 
 ```sh
 terraform init
@@ -78,6 +79,7 @@ helm upgrade --install grick charts/grick --namespace grick --create-namespace \
   -f charts/grick/values-aws-marketplace.yaml \
   --set env.AWS_MARKETPLACE_PRODUCT_CODE=<product-code> \
   --set env.AWS_MARKETPLACE_PRODUCT_SKU=<product-id> \
+  --set env.AWS_MARKETPLACE_ENFORCE_CONTAINER_LICENSE=false \
   --set env.EVIDENCE_STORAGE_PROVIDER=s3 \
   --set env.EVIDENCE_S3_BUCKET=<your-bucket> \
   --set secretEnv.STORAGE_PROVIDER=s3
