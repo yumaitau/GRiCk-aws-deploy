@@ -47,6 +47,15 @@ resource "aws_vpc_security_group_ingress_rule" "alb" {
   to_port           = each.value.port
   ip_protocol       = "tcp"
   cidr_ipv4         = each.value.cidr
+
+  lifecycle {
+    precondition {
+      condition = var.allow_internet_ingress || alltrue([
+        for cidr in var.allowed_ingress_cidrs : cidr != "0.0.0.0/0" && cidr != "::/0"
+      ])
+      error_message = "0.0.0.0/0 and ::/0 are blocked on the ALB unless allow_internet_ingress is true."
+    }
+  }
 }
 
 resource "aws_vpc_security_group_egress_rule" "alb_to_web" {

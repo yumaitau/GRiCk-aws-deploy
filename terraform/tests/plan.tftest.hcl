@@ -25,7 +25,8 @@ mock_provider "random" {
 }
 
 variables {
-  container_image = "ghcr.io/yumaitau/grick@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  container_image       = "ghcr.io/yumaitau/grick@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  allowed_ingress_cidrs = ["203.0.113.0/24"]
 }
 
 run "secure_test_baseline" {
@@ -91,6 +92,44 @@ run "secure_test_baseline" {
   assert {
     condition     = aws_elasticache_replication_group.this.transit_encryption_enabled
     error_message = "Redis traffic must require TLS."
+  }
+
+  assert {
+    condition = alltrue([
+      for rule in aws_vpc_security_group_ingress_rule.alb : rule.cidr_ipv4 != "0.0.0.0/0" && rule.cidr_ipv4 != "::/0"
+    ])
+    error_message = "ALB ingress must not default to the public internet."
+  }
+
+  assert {
+    condition     = aws_flow_log.this.traffic_type == "ALL"
+    error_message = "VPC flow logs must capture all traffic."
+  }
+}
+
+run "reject_world_open_ingress" {
+  command = plan
+
+  variables {
+    allowed_ingress_cidrs = ["0.0.0.0/0"]
+  }
+
+  expect_failures = [aws_vpc_security_group_ingress_rule.alb]
+}
+
+run "allow_world_open_ingress_when_explicit" {
+  command = plan
+
+  variables {
+    allowed_ingress_cidrs  = ["0.0.0.0/0"]
+    allow_internet_ingress = true
+  }
+
+  assert {
+    condition = anytrue([
+      for rule in aws_vpc_security_group_ingress_rule.alb : rule.cidr_ipv4 == "0.0.0.0/0"
+    ])
+    error_message = "allow_internet_ingress must be able to open the ALB when the buyer opts in."
   }
 }
 

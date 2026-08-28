@@ -9,8 +9,9 @@ Subscribe at https://aws.amazon.com/marketplace/pp?sku=8pjp6r3g4mw0nfmf8imsf9z1d
 1. Open CloudFormation in the target Region (`ap-southeast-2` recommended; `us-east-1` for Marketplace metering proof).
 2. Create stack → With new resources → Upload a template file → `grick-fargate.yaml`.
 3. Set **Marketplace product code** and **product ID (SKU)** from the listing. Pin **Container image** to this listing tag or digest.
-4. Leave **ACM certificate ARN** and **SES From** empty for a first HTTP launch without mail.
-5. Acknowledge IAM capabilities. Create.
+4. Set **Allowed ingress CIDR** to your office, VPN, or client range. Leave **Allow internet ingress** false. `0.0.0.0/0` is rejected unless that flag is true.
+6. Leave **ACM certificate ARN** and **SES From** empty for a first HTTP launch without mail.
+7. Acknowledge IAM capabilities. Create.
 
 When the stack is `CREATE_COMPLETE`, open the `ApplicationUrl` output. First user registers at `/sign-up`, then creates the organisation at `/onboarding`.
 
@@ -19,15 +20,15 @@ When the stack is `CREATE_COMPLETE`, open the `ApplicationUrl` output. First use
 ```sh
 cd cloudformation
 cp parameters.example.json parameters.json
-# edit MarketplaceProductCode, MarketplaceProductSku, ContainerImage
+# edit MarketplaceProductCode, MarketplaceProductSku, ContainerImage, AllowedIngressCidr
 
-aws cloudformation create-stack \
+# Template is over the 51 KiB inline body limit; deploy uploads it to S3.
+aws cloudformation deploy \
   --stack-name grick \
-  --template-body file://grick-fargate.yaml \
+  --template-file grick-fargate.yaml \
   --capabilities CAPABILITY_IAM \
-  --parameters file://parameters.json
+  --parameter-overrides $(python3 -c 'import json; print(" ".join("%s=%s" % (p["ParameterKey"], p["ParameterValue"]) for p in json.load(open("parameters.json"))))')
 
-aws cloudformation wait stack-create-complete --stack-name grick
 aws cloudformation describe-stacks --stack-name grick \
   --query "Stacks[0].Outputs[?OutputKey=='ApplicationUrl'].OutputValue" \
   --output text
@@ -43,7 +44,8 @@ The image entrypoint waits for Postgres, migrates, then starts. A separate migra
 | `SesFromEmail` | No mail | Verified SES identity. Stack sets `EMAIL_PROVIDER=ses` and `ses:SendEmail` on the task role. |
 | `DatabaseMultiAz` / `CacheHighAvailability` | Off | Production resilience. |
 | `EnableAwsBackup` | Off | Daily AWS Backup of RDS + evidence bucket. |
-| `AllowedIngressCidr` | `0.0.0.0/0` | Narrow to your office / VPN. |
+| `AllowedIngressCidr` | none (required) | Office, VPN, or client CIDR. |
+| `AllowInternetIngress` | `false` | Set `true` only to allow `0.0.0.0/0` on the ALB. |
 
 S3 evidence storage is always created. Dual-NAT (per-AZ egress) is Terraform-only.
 

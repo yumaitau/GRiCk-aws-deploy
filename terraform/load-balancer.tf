@@ -1,4 +1,5 @@
 resource "aws_lb" "web" {
+  # checkov:skip=CKV2_AWS_76:WAF ACL includes KnownBadInputs and AnonymousIpList; graph check misses count
   name               = substr("${local.name}-web", 0, 32)
   internal           = false
   load_balancer_type = "application"
@@ -8,9 +9,17 @@ resource "aws_lb" "web" {
   drop_invalid_header_fields = true
   enable_deletion_protection = false
 
+  access_logs {
+    bucket  = aws_s3_bucket.logs.id
+    prefix  = "alb"
+    enabled = true
+  }
+
   tags = {
     Name = "${local.name}-web"
   }
+
+  depends_on = [aws_s3_bucket_policy.logs]
 }
 
 resource "aws_lb_target_group" "web" {

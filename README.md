@@ -19,19 +19,19 @@ git clone https://github.com/yumaitau/GRiCk-aws-deploy.git
 cd GRiCk-aws-deploy/cloudformation
 ```
 
-Console: Create stack → Upload `grick-fargate.yaml` → set **ContainerImage**, **MarketplaceProductCode**, **MarketplaceProductSku** from the listing → acknowledge IAM → Create.
+Console: Create stack → Upload `grick-fargate.yaml` → set **ContainerImage**, **MarketplaceProductCode**, **MarketplaceProductSku** from the listing → set **AllowedIngressCidr** to your office/VPN CIDR → acknowledge IAM → Create. Do not use `0.0.0.0/0` unless **AllowInternetIngress** is true.
 
 CLI:
 
 ```sh
 cp parameters.example.json parameters.json
-# edit product code, product ID, image
+# edit product code, product ID, image, AllowedIngressCidr
 
-aws cloudformation create-stack \
+aws cloudformation deploy \
   --stack-name grick \
-  --template-body file://grick-fargate.yaml \
+  --template-file grick-fargate.yaml \
   --capabilities CAPABILITY_IAM \
-  --parameters file://parameters.json
+  --parameter-overrides $(python3 -c 'import json; print(" ".join("%s=%s" % (p["ParameterKey"], p["ParameterValue"]) for p in json.load(open("parameters.json"))))')
 ```
 
 Open the `ApplicationUrl` output. First user registers at `/sign-up`, then creates the organisation at `/onboarding`. No seed admin is baked into the image.
@@ -56,7 +56,8 @@ Edit `terraform.tfvars`:
 
 1. Pin `container_image` to this listing’s tag or digest (example uses `:1.0.1`).
 2. Set `marketplace_product_code` and `marketplace_product_sku` from the listing. Empty values disable the license check and Marketplace tasks will fail checkout.
-3. Leave `certificate_arn` and `ses_from_email` empty for a first HTTP launch without mail.
+3. Set `allowed_ingress_cidrs` to your office, VPN, or client CIDR. Leave `allow_internet_ingress` false. `0.0.0.0/0` is rejected unless that flag is true.
+4. Leave `certificate_arn` and `ses_from_email` empty for a first HTTP launch without mail.
 
 ```sh
 terraform init

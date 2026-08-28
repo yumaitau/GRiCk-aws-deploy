@@ -1,11 +1,19 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Description: >
   GRiCk on ECS Fargate. Buyer-owned VPC, ALB, RDS PostgreSQL 16, ElastiCache Redis,
-  KMS, Secrets Manager, and a private S3 evidence bucket. Subscribe on AWS Marketplace
-  before creating this stack. Parity target is deploy/terraform/aws-fargate first-launch
-  defaults (single NAT). Dual-NAT production egress stays on the Terraform stack.
+  KMS, Secrets Manager, and a private S3 evidence bucket. ALB ingress CIDR is required;
+  0.0.0.0/0 needs AllowInternetIngress. Subscribe on AWS Marketplace before creating
+  this stack. Parity target is first-launch Terraform defaults (single NAT). Dual-NAT
+  production egress stays on the Terraform stack.
 
 Metadata:
+  AWSToolsMetrics:
+    AWSAgentToolkit: aws-cloudformation@2
+  com.aws.cloudformation.Context:
+    must:
+      - ALB SG ingress never 0.0.0.0/0 unless AllowInternetIngress
+    ref:
+      - { at: cloudformation/README.md, has: launch + ingress, scope: companion }
   AWS::CloudFormation::Interface:
     ParameterGroups:
       - Label:
@@ -25,6 +33,7 @@ Metadata:
         Parameters:
           - VpcCidr
           - AllowedIngressCidr
+          - AllowInternetIngress
       - Label:
           default: Optional HTTPS and email
         Parameters:
@@ -95,8 +104,15 @@ Parameters:
 
   AllowedIngressCidr:
     Type: String
-    Default: 0.0.0.0/0
-    Description: IPv4 CIDR allowed to reach the ALB. Narrow this for private/test deployments.
+    AllowedPattern: "^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(\\/([0-9]|[1-2][0-9]|3[0-2]))$"
+    ConstraintDescription: IPv4 CIDR (for example 203.0.113.0/24). 0.0.0.0/0 requires AllowInternetIngress=true.
+    Description: IPv4 CIDR allowed to reach the ALB. Required. 0.0.0.0/0 is rejected unless AllowInternetIngress is true.
+
+  AllowInternetIngress:
+    Type: String
+    Default: "false"
+    AllowedValues: ["true", "false"]
+    Description: Permit 0.0.0.0/0 on the ALB. Off by default. Use only for a public service behind WAF and HTTPS.
 
   CertificateArn:
     Type: String
@@ -177,6 +193,13 @@ Conditions:
   WafEnabled: !Equals [!Ref EnableWaf, "true"]
   BackupEnabled: !Equals [!Ref EnableAwsBackup, "true"]
 
+Rules:
+  NoWorldOpenIngress:
+    RuleCondition: !Equals [!Ref AllowInternetIngress, "false"]
+    Assertions:
+      - Assert: !Not [!Equals [!Ref AllowedIngressCidr, "0.0.0.0/0"]]
+        AssertDescription: AllowedIngressCidr cannot be 0.0.0.0/0 unless AllowInternetIngress is true.
+
 Resources:
   EncryptionKey:
     Type: AWS::KMS::Key
@@ -193,6 +216,20 @@ Resources:
               AWS: !Sub arn:${AWS::Partition}:iam::${AWS::AccountId}:root
             Action: kms:*
             Resource: "*"
+          - Sid: CloudWatchLogs
+            Effect: Allow
+            Principal:
+              Service: !Sub logs.${AWS::Region}.amazonaws.com
+            Action:
+              - kms:Encrypt
+              - kms:Decrypt
+              - kms:ReEncrypt*
+              - kms:GenerateDataKey*
+              - kms:DescribeKey
+            Resource: "*"
+            Condition:
+              ArnLike:
+                kms:EncryptionContext:aws:logs:arn: !Sub arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:*
 
   EncryptionKeyAlias:
     Type: AWS::KMS::Alias
@@ -405,6 +442,51 @@ Resources:
         - Key: Name
           Value: !Sub ${NamePrefix}-${Environment}-s3
 
+  FlowLogsRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: vpc-flow-logs.amazonaws.com
+            Action: sts:AssumeRole
+            Condition:
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+      Policies:
+        - PolicyName: vpc-flow-logs
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                  - logs:DescribeLogGroups
+                  - logs:DescribeLogStreams
+                Resource:
+                  - !GetAtt FlowLogsGroup.Arn
+                  - !Sub ${FlowLogsGroup.Arn}:*
+
+  FlowLogsGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /vpc/${NamePrefix}-${Environment}/flow-logs
+      RetentionInDays: !Ref LogRetentionDays
+      KmsKeyId: !GetAtt EncryptionKey.Arn
+
+  VpcFlowLog:
+    Type: AWS::EC2::FlowLog
+    Properties:
+      ResourceId: !Ref Vpc
+      ResourceType: VPC
+      TrafficType: ALL
+      DeliverLogsPermissionArn: !GetAtt FlowLogsRole.Arn
+      LogDestinationType: cloud-watch-logs
+      LogGroupName: !Ref FlowLogsGroup
+
   AlbSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
@@ -441,6 +523,7 @@ Resources:
         - Key: Name
           Value: !Sub ${NamePrefix}-${Environment}-cache
 
+  # ALB SG only — not shared with tasks, RDS, or Redis.
   AlbHttpIngress:
     Type: AWS::EC2::SecurityGroupIngress
     Properties:
@@ -552,8 +635,76 @@ Resources:
       ToPort: 6379
       SourceSecurityGroupId: !Ref TaskSecurityGroup
 
+  LogsBucket:
+    Type: AWS::S3::Bucket
+    Metadata:
+      checkov:
+        skip:
+          - id: CKV_AWS_18
+            comment: Access-log destination cannot log to itself
+    Properties:
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerEnforced
+      VersioningConfiguration:
+        Status: Enabled
+      LifecycleConfiguration:
+        Rules:
+          - Id: expire-access-logs
+            Status: Enabled
+            ExpirationInDays: 90
+            NoncurrentVersionExpirationInDays: 30
+            AbortIncompleteMultipartUpload:
+              DaysAfterInitiation: 7
+
+  LogsBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref LogsBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: DenyInsecureTransport
+            Effect: Deny
+            Principal: "*"
+            Action: s3:*
+            Resource:
+              - !GetAtt LogsBucket.Arn
+              - !Sub ${LogsBucket.Arn}/*
+            Condition:
+              Bool:
+                aws:SecureTransport: "false"
+          - Sid: AlbAccessLogs
+            Effect: Allow
+            Principal:
+              Service: logdelivery.elasticloadbalancing.amazonaws.com
+            Action: s3:PutObject
+            Resource: !Sub ${LogsBucket.Arn}/alb/AWSLogs/${AWS::AccountId}/*
+            Condition:
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+          - Sid: S3AccessLogs
+            Effect: Allow
+            Principal:
+              Service: logging.s3.amazonaws.com
+            Action: s3:PutObject
+            Resource: !Sub ${LogsBucket.Arn}/s3/evidence/*
+            Condition:
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+
   EvidenceBucket:
     Type: AWS::S3::Bucket
+    DependsOn: LogsBucketPolicy
     Properties:
       BucketEncryption:
         ServerSideEncryptionConfiguration:
@@ -571,6 +722,16 @@ Resources:
           - ObjectOwnership: BucketOwnerEnforced
       VersioningConfiguration:
         Status: Enabled
+      LoggingConfiguration:
+        DestinationBucketName: !Ref LogsBucket
+        LogFilePrefix: s3/evidence/
+      LifecycleConfiguration:
+        Rules:
+          - Id: evidence-maintenance
+            Status: Enabled
+            AbortIncompleteMultipartUpload:
+              DaysAfterInitiation: 7
+            NoncurrentVersionExpirationInDays: 90
       Tags:
         - Key: Application
           Value: GRiCk
@@ -769,6 +930,11 @@ Resources:
             Principal:
               Service: ecs-tasks.amazonaws.com
             Action: sts:AssumeRole
+            Condition:
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+              ArnLike:
+                aws:SourceArn: !Sub arn:${AWS::Partition}:ecs:${AWS::Region}:${AWS::AccountId}:*
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
       Policies:
@@ -797,6 +963,11 @@ Resources:
             Principal:
               Service: ecs-tasks.amazonaws.com
             Action: sts:AssumeRole
+            Condition:
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+              ArnLike:
+                aws:SourceArn: !Sub arn:${AWS::Partition}:ecs:${AWS::Region}:${AWS::AccountId}:*
       Policies:
         - PolicyName: evidence-storage
           PolicyDocument:
@@ -840,7 +1011,7 @@ Resources:
             Action:
               - ses:SendEmail
               - ses:SendRawEmail
-            Resource: "*"
+            Resource: !Sub arn:${AWS::Partition}:ses:${AWS::Region}:${AWS::AccountId}:identity/*
 
   TaskMarketplacePolicy:
     Type: AWS::IAM::Policy
@@ -877,21 +1048,25 @@ Resources:
     Properties:
       LogGroupName: !Sub /ecs/${NamePrefix}-${Environment}/web
       RetentionInDays: !Ref LogRetentionDays
+      KmsKeyId: !GetAtt EncryptionKey.Arn
 
   WorkerLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
       LogGroupName: !Sub /ecs/${NamePrefix}-${Environment}/worker
       RetentionInDays: !Ref LogRetentionDays
+      KmsKeyId: !GetAtt EncryptionKey.Arn
 
   MigrationLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
       LogGroupName: !Sub /ecs/${NamePrefix}-${Environment}/migration
       RetentionInDays: !Ref LogRetentionDays
+      KmsKeyId: !GetAtt EncryptionKey.Arn
 
   LoadBalancer:
     Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    DependsOn: LogsBucketPolicy
     Properties:
       Type: application
       Scheme: internet-facing
@@ -903,6 +1078,12 @@ Resources:
       LoadBalancerAttributes:
         - Key: routing.http.drop_invalid_header_fields.enabled
           Value: "true"
+        - Key: access_logs.s3.enabled
+          Value: "true"
+        - Key: access_logs.s3.bucket
+          Value: !Ref LogsBucket
+        - Key: access_logs.s3.prefix
+          Value: alb
       Tags:
         - Key: Name
           Value: !Sub ${NamePrefix}-${Environment}-web
@@ -933,8 +1114,18 @@ Resources:
       Port: 80
       Protocol: HTTP
       DefaultActions:
-        - Type: forward
-          TargetGroupArn: !Ref TargetGroup
+        - !If
+          - HasCertificate
+          - Type: redirect
+            RedirectConfig:
+              Host: "#{host}"
+              Path: "/#{path}"
+              Port: "443"
+              Protocol: HTTPS
+              Query: "#{query}"
+              StatusCode: HTTP_301
+          - Type: forward
+            TargetGroupArn: !Ref TargetGroup
 
   HttpsListener:
     Type: AWS::ElasticLoadBalancingV2::Listener
@@ -964,6 +1155,18 @@ Resources:
         MetricName: !Sub ${NamePrefix}-${Environment}-web
         SampledRequestsEnabled: true
       Rules:
+        - Name: AWSManagedRulesAnonymousIpList
+          Priority: 5
+          OverrideAction:
+            None: {}
+          Statement:
+            ManagedRuleGroupStatement:
+              Name: AWSManagedRulesAnonymousIpList
+              VendorName: AWS
+          VisibilityConfig:
+            CloudWatchMetricsEnabled: true
+            MetricName: !Sub ${NamePrefix}-${Environment}-anonymous-ip
+            SampledRequestsEnabled: true
         - Name: AWSManagedRulesCommonRuleSet
           Priority: 10
           OverrideAction:
@@ -996,6 +1199,43 @@ Resources:
     Properties:
       ResourceArn: !Ref LoadBalancer
       WebACLArn: !GetAtt WebAcl.Arn
+
+  WafLogGroup:
+    Type: AWS::Logs::LogGroup
+    Condition: WafEnabled
+    Properties:
+      LogGroupName: !Sub aws-waf-logs-${NamePrefix}-${Environment}
+      RetentionInDays: !Ref LogRetentionDays
+      KmsKeyId: !GetAtt EncryptionKey.Arn
+
+  WafLogResourcePolicy:
+    Type: AWS::Logs::ResourcePolicy
+    Condition: WafEnabled
+    Properties:
+      PolicyName: !Sub ${NamePrefix}-${Environment}-waf-logs
+      PolicyDocument: !Sub |
+        {
+          "Version": "2012-10-17",
+          "Statement": [{
+            "Effect": "Allow",
+            "Principal": {"Service": "delivery.logs.amazonaws.com"},
+            "Action": ["logs:CreateLogStream", "logs:PutLogEvents"],
+            "Resource": "${WafLogGroup.Arn}:*",
+            "Condition": {
+              "StringEquals": {"aws:SourceAccount": "${AWS::AccountId}"},
+              "ArnLike": {"aws:SourceArn": "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:*"}
+            }
+          }]
+        }
+
+  WebAclLogging:
+    Type: AWS::WAFv2::LoggingConfiguration
+    Condition: WafEnabled
+    DependsOn: WafLogResourcePolicy
+    Properties:
+      ResourceArn: !GetAtt WebAcl.Arn
+      LogDestinationConfigs:
+        - !GetAtt WafLogGroup.Arn
 
   WebTaskDefinition:
     Type: AWS::ECS::TaskDefinition
@@ -1469,6 +1709,9 @@ Resources:
             Principal:
               Service: backup.amazonaws.com
             Action: sts:AssumeRole
+            Condition:
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/service-role/AWSBackupServiceRolePolicyForBackup
         - arn:aws:iam::aws:policy/AWSBackupServiceRolePolicyForS3Backup

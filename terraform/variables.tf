@@ -102,13 +102,18 @@ variable "vpc_cidr" {
 
 variable "allowed_ingress_cidrs" {
   type        = list(string)
-  description = "IPv4 CIDRs allowed to reach the ALB. Narrow this for private/test deployments."
-  default     = ["0.0.0.0/0"]
+  description = "IPv4 CIDRs allowed to reach the ALB. Required. 0.0.0.0/0 is rejected unless allow_internet_ingress is true."
 
   validation {
     condition     = length(var.allowed_ingress_cidrs) > 0 && alltrue([for cidr in var.allowed_ingress_cidrs : can(cidrhost(cidr, 0))])
     error_message = "allowed_ingress_cidrs must contain at least one valid IPv4 CIDR."
   }
+}
+
+variable "allow_internet_ingress" {
+  type        = bool
+  description = "Permit 0.0.0.0/0 on the ALB. Off by default. Use only for a public service behind WAF and HTTPS."
+  default     = false
 }
 
 variable "single_nat_gateway" {

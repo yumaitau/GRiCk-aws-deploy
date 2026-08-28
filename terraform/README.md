@@ -95,6 +95,8 @@ Test defaults optimise for a short proof run. Production should set:
 ```hcl
 app_url                       = "https://grick.example.com"
 certificate_arn                = "arn:aws:acm:ap-southeast-2:...:certificate/..."
+allowed_ingress_cidrs          = ["203.0.113.0/24"]
+allow_internet_ingress         = false
 database_multi_az              = true
 database_deletion_protection   = true
 cache_high_availability        = true
@@ -103,6 +105,8 @@ enable_aws_backup              = true
 force_destroy_backup_vault     = false
 force_destroy_evidence_bucket  = false
 ```
+
+`allowed_ingress_cidrs` is required. `0.0.0.0/0` is rejected unless `allow_internet_ingress = true`. Use that flag only for a public site behind WAF and HTTPS.
 
 HTTPS is ACM on the ALB. Request the certificate in the same Region as the load balancer, then set both `certificate_arn` and `app_url`. Same `terraform apply` later; no new IAM role.
 
@@ -114,7 +118,7 @@ ses_from_email = "GRiCk <no-reply@example.com>"
 
 That identity must already be verified in Amazon SES. The stack then sets `EMAIL_PROVIDER=ses` and adds `ses:SendEmail` on the existing task role. SMTP, Paperboy, Resend, or Azure ACS are other `EMAIL_PROVIDER` choices; they are not created by this module.
 
-Also narrow `allowed_ingress_cidrs` when public access is unnecessary, configure DNS to the ALB, use a remote state backend, and set a final-snapshot policy appropriate to the buyer.
+Configure DNS to the ALB, use a remote state backend, and set a final-snapshot policy appropriate to the buyer. Do not ship `0.0.0.0/0` on the ALB unless `allow_internet_ingress` is an explicit, reviewed decision.
 
 ## Destroy
 

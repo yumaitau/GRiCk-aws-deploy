@@ -7,6 +7,20 @@ data "aws_iam_policy_document" "ecs_tasks_assume_role" {
       type        = "Service"
       identifiers = ["ecs-tasks.amazonaws.com"]
     }
+
+    condition {
+      test     = "StringEquals"
+      variable = "aws:SourceAccount"
+      values   = [data.aws_caller_identity.current.account_id]
+    }
+
+    condition {
+      test     = "ArnLike"
+      variable = "aws:SourceArn"
+      values = [
+        "arn:${data.aws_partition.current.partition}:ecs:${var.aws_region}:${data.aws_caller_identity.current.account_id}:*",
+      ]
+    }
   }
 }
 
@@ -98,7 +112,9 @@ data "aws_iam_policy_document" "task" {
         "ses:SendEmail",
         "ses:SendRawEmail",
       ]
-      resources = ["*"]
+      resources = [
+        "arn:${data.aws_partition.current.partition}:ses:${var.aws_region}:${data.aws_caller_identity.current.account_id}:identity/*",
+      ]
     }
   }
 
