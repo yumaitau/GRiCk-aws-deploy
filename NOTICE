@@ -1,0 +1,9 @@
+GRiCk AWS Marketplace deploy
+Copyright 2026 Yuma IT
+
+This repository contains Terraform, Helm, and IAM artifacts for deploying
+the GRiCk container product in a buyer AWS account.
+
+The GRiCk application container image is not licensed under Apache-2.0.
+Use of the image requires an AWS Marketplace subscription to GRiCk.
+Image: 709825985650.dkr.ecr.us-east-1.amazonaws.com/yuma-it/grick-aws
