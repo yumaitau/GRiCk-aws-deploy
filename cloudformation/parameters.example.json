@@ -1,0 +1,22 @@
+[
+  {
+    "ParameterKey": "NamePrefix",
+    "ParameterValue": "grick"
+  },
+  {
+    "ParameterKey": "Environment",
+    "ParameterValue": "prod"
+  },
+  {
+    "ParameterKey": "ContainerImage",
+    "ParameterValue": "709825985650.dkr.ecr.us-east-1.amazonaws.com/yuma-it/grick-aws:1.0.1"
+  },
+  {
+    "ParameterKey": "MarketplaceProductCode",
+    "ParameterValue": "replace-with-listing-product-code"
+  },
+  {
+    "ParameterKey": "MarketplaceProductSku",
+    "ParameterValue": "replace-with-listing-product-id"
+  }
+]
