@@ -27,6 +27,7 @@ mock_provider "random" {
 variables {
   container_image       = "ghcr.io/yumaitau/grick@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
   allowed_ingress_cidrs = ["203.0.113.0/24"]
+  cpu_architecture      = "X86_64"
 }
 
 run "secure_test_baseline" {

@@ -31,6 +31,17 @@ variable "environment" {
   }
 }
 
+variable "cpu_architecture" {
+  type        = string
+  description = "Fargate CPU architecture. X86_64 is the listing default. ARM64 is valid when the image has a linux/arm64 variant."
+  default     = "X86_64"
+
+  validation {
+    condition     = contains(["X86_64", "ARM64"], var.cpu_architecture)
+    error_message = "cpu_architecture must be X86_64 or ARM64."
+  }
+}
+
 variable "container_image" {
   type        = string
   description = "GRiCk OCI image pinned to a digest or immutable version tag. Floating tags are rejected."
