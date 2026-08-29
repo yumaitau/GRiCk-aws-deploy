@@ -82,12 +82,7 @@ dump_service_diagnostics() {
 }
 
 preflight_marketplace_license() {
-  local sku
-  sku=$(terraform output -raw marketplace_product_sku 2>/dev/null || true)
-  if [[ -z "${sku}" ]]; then
-    echo "Marketplace product SKU is empty; skipping license grant preflight."
-    return 0
-  fi
+  local sku="prod-vgebc2b2lowoq"
 
   # Read-only. CheckoutLicense from this CLI identity holds the listing's
   # MaxCount=1 seat for ~60 minutes and Fargate tasks cannot share it.
@@ -101,7 +96,7 @@ preflight_marketplace_license() {
   if [[ "${available}" == "0" ]]; then
     echo "No AVAILABLE License Manager license for ProductSKU ${sku}." >&2
     echo "Subscribe on the GRiCk AWS Marketplace listing before launching tasks." >&2
-    echo "Images 1.0.1/1.0.2 request Unit=None; keep marketplace_enforce_container_license=false until 1.0.3." >&2
+    echo "Marketplace images 1.0.1 and 1.0.2 are unsupported. Deploy 1.0.3+." >&2
     exit 1
   fi
   echo "Found ${available} AVAILABLE license(s) for ${sku}."

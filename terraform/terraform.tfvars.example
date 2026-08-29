@@ -2,14 +2,11 @@ aws_region      = "ap-southeast-2"
 name_prefix     = "grick"
 environment     = "prod"
 # Pin to this listing tag or, better, the listing digest from Seller Central.
-container_image = "709825985650.dkr.ecr.us-east-1.amazonaws.com/yuma-it/grick-aws:1.0.2"
+# Use 1.0.3 or newer. Images 1.0.1 and 1.0.2 are unsupported.
+container_image = "709825985650.dkr.ecr.us-east-1.amazonaws.com/yuma-it/grick-aws:1.0.3"
 
-# Required for Marketplace tasks. Copy from the listing (product code + product ID).
-# Empty disables License Manager checkout; subscribed tasks will fail without these.
-marketplace_product_code = "replace-with-listing-product-code"
-marketplace_product_sku  = "replace-with-listing-product-id"
-# Required for listing images 1.0.1/1.0.2. Set true after 1.0.3 is published.
-marketplace_enforce_container_license = false
+# Marketplace product identity is baked into the 1.0.3+ image.
+# Do not set AWS_MARKETPLACE_* environment variables to disable licensing.
 
 # Required. Office, VPN, or client CIDRs only. 0.0.0.0/0 is rejected unless
 # allow_internet_ingress = true (public service behind WAF + HTTPS).

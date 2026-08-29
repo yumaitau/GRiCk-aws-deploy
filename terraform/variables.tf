@@ -64,25 +64,25 @@ variable "container_registry_credentials_secret_arn" {
 
 variable "marketplace_product_code" {
   type        = string
-  description = "AWS Marketplace container product code. Empty disables Marketplace license checks."
+  description = "Deprecated and ignored. GRiCk 1.0.3+ embeds Marketplace product identity in the image. Kept so existing tfvars still apply."
   default     = ""
 }
 
 variable "marketplace_product_sku" {
   type        = string
-  description = "AWS Marketplace container product ID used as License Manager ProductSKU."
+  description = "Deprecated and ignored. GRiCk 1.0.3+ embeds the License Manager ProductSKU in the image. Kept so existing tfvars still apply."
   default     = ""
 }
 
 variable "marketplace_enforce_container_license" {
   type        = bool
-  description = "Run CheckoutLicense at task boot. false for listing images 1.0.1/1.0.2, which request Unit=None and a new ClientToken per task and fail with No Entitlements Allowed. Set true for 1.0.3+."
+  description = "Deprecated and ignored. Marketplace images 1.0.3+ always enforce CheckoutLicense. Images 1.0.1/1.0.2 are unsupported."
   default     = false
 }
 
 variable "marketplace_public_key_version" {
   type        = number
-  description = "PublicKeyVersion from Seller Central for RegisterUsage (hourly test or fallback)."
+  description = "Deprecated and ignored. Hourly RegisterUsage is not used by the public GRiCk contract listing."
   default     = 1
 }
 

@@ -152,20 +152,31 @@ run "migration_only_bootstrap" {
   }
 }
 
-run "marketplace_listing_image_skips_broken_checkout" {
+run "marketplace_identity_is_not_buyer_configurable" {
   command = plan
 
   variables {
-    marketplace_product_code = "8pjp6r3g4mw0nfmf8imsf9z1d"
-    marketplace_product_sku  = "prod-vgebc2b2lowoq"
+    marketplace_product_code               = "buyer-forged-product-code"
+    marketplace_product_sku                = "buyer-forged-product-sku"
+    marketplace_enforce_container_license = false
   }
 
   assert {
-    condition = anytrue([
-      for variable in local.marketplace_environment :
-      variable.name == "AWS_MARKETPLACE_ENFORCE_CONTAINER_LICENSE" && variable.value == "false"
+    condition     = length(local.marketplace_environment) == 0
+    error_message = "Marketplace product identity and license flags must not be injected into the task environment."
+  }
+
+  assert {
+    condition = !anytrue([
+      for variable in concat(local.common_environment, local.marketplace_environment) :
+      contains([
+        "AWS_MARKETPLACE_ENFORCE_CONTAINER_LICENSE",
+        "AWS_MARKETPLACE_PRODUCT_CODE",
+        "AWS_MARKETPLACE_PRODUCT_SKU",
+        "AWS_MARKETPLACE_ENABLED",
+      ], variable.name)
     ])
-    error_message = "Listing images 1.0.1/1.0.2 must not CheckoutLicense at boot."
+    error_message = "Buyer environment must not include Marketplace license controls."
   }
 
   assert {

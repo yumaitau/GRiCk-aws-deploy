@@ -19,7 +19,7 @@ Amazon EKS buyers use the same Marketplace image via `../charts/grick` and `../c
 - AWS CLI authenticated to the intended account.
 - `jq` and `curl` for `bootstrap.sh`.
 - Immutable multi-architecture GRiCk image containing `linux/amd64`.
-- AWS Marketplace buyers: set `container_image` to the Marketplace ECR digest and set `marketplace_product_code` / `marketplace_product_sku`. No GitHub token.
+- AWS Marketplace buyers: set `container_image` to a `1.0.3+` Marketplace ECR digest. No GitHub token. Licensing is enforced by the image.
 - Private GHCR only: existing Secrets Manager secret containing exactly `{"username":"...","password":"..."}`. Password must be a GitHub token with `read:packages`.
 
 Never put secrets in `terraform.tfvars`, shell history, or committed files. Terraform state contains generated database/application secrets; use an encrypted remote backend with restricted access for production.
@@ -38,9 +38,7 @@ public registration.
 ```sh
 cd terraform
 cp terraform.tfvars.example terraform.tfvars
-# Pin container_image to the Marketplace ECR digest. Set marketplace_product_code
-# and marketplace_product_sku from the listing. Leave
-# marketplace_enforce_container_license=false on 1.0.1/1.0.2. Do not set a GHCR pull secret.
+# Pin container_image to a 1.0.3+ Marketplace ECR digest. Do not set a GHCR pull secret.
 terraform init
 terraform apply -var-file=terraform.tfvars
 terraform output application_url
@@ -76,7 +74,7 @@ This stack always creates the services GRiCk needs to boot:
 - ElastiCache Redis (TLS to Redis; not public HTTPS)
 - KMS-encrypted S3 evidence bucket + S3 gateway endpoint
 - Secrets Manager, CloudWatch logs
-- ECS execution role + task role with S3/KMS (and License Manager when `marketplace_product_code` is set)
+- ECS execution role + task role with S3/KMS and License Manager `CheckoutLicense`
 
 S3 is not a later add-on. Evidence uploads use this bucket. Do not tell operators to invent a second IAM role “for TLS in front of the instance”. TLS is an ACM certificate on the ALB (or their own proxy). IAM for S3/SES/License Manager already lives on the ECS **task** role.
 

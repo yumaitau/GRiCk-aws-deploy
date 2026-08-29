@@ -8,6 +8,10 @@ This repository is CloudFormation, Terraform, Helm, and IAM only. The applicatio
 
 AWS Marketplace always shows `docker login` + `docker pull` for container listings. That snippet only proves the subscription can pull the image. It does not create VPC, ECS, RDS, Redis, S3, or IAM. Use this repo to launch the product.
 
+The GRiCk AWS Marketplace distribution validates its AWS Marketplace entitlement at runtime with AWS License Manager `CheckoutLicense`. Marketplace licensing cannot be disabled through Docker, ECS, Terraform, Helm, or environment configuration. The ECS task role must permit the required AWS License Manager operations.
+
+Use image **1.0.3 or newer**. Images `1.0.1` and `1.0.2` allowed a temporary license-disable flag and are unsupported.
+
 ## ECS Fargate — CloudFormation (AWS Console)
 
 No Terraform. Upload the template in the CloudFormation console or use the AWS CLI.
@@ -19,13 +23,13 @@ git clone https://github.com/yumaitau/GRiCk-aws-deploy.git
 cd GRiCk-aws-deploy/cloudformation
 ```
 
-Console: Create stack → Upload `grick-fargate.yaml` → set **ContainerImage**, **MarketplaceProductCode**, **MarketplaceProductSku** from the listing → set **AllowedIngressCidr** to your office/VPN CIDR → acknowledge IAM → Create. Do not use `0.0.0.0/0` unless **AllowInternetIngress** is true.
+Console: Create stack → Upload `grick-fargate.yaml` → set **ContainerImage** to a `1.0.3+` listing tag or digest → set **AllowedIngressCidr** to your office/VPN CIDR → acknowledge IAM → Create. Do not use `0.0.0.0/0` unless **AllowInternetIngress** is true. Marketplace product-code parameters are ignored; the image already knows the GRiCk listing.
 
 CLI:
 
 ```sh
 cp parameters.example.json parameters.json
-# edit product code, product ID, image, AllowedIngressCidr
+# edit image and AllowedIngressCidr
 
 aws cloudformation deploy \
   --stack-name grick \
@@ -54,11 +58,11 @@ cp terraform.tfvars.example terraform.tfvars
 
 Edit `terraform.tfvars`:
 
-1. Pin `container_image` to this listing’s tag or digest (example uses `:1.0.2`).
-2. Set `marketplace_product_code` and `marketplace_product_sku` from the listing. Empty values disable the license check and Marketplace tasks will fail checkout.
-3. Leave `marketplace_enforce_container_license` false on 1.0.1/1.0.2. Those images request the wrong License Manager unit and a new ClientToken per task, so CheckoutLicense fails with No Entitlements Allowed. Set it true after 1.0.3.
-4. Set `allowed_ingress_cidrs` to your office, VPN, or client CIDR. Leave `allow_internet_ingress` false. `0.0.0.0/0` is rejected unless that flag is true.
-5. Leave `certificate_arn` and `ses_from_email` empty for a first HTTP launch without mail.
+1. Pin `container_image` to this listing’s `1.0.3+` tag or digest.
+2. Set `allowed_ingress_cidrs` to your office, VPN, or client CIDR. Leave `allow_internet_ingress` false. `0.0.0.0/0` is rejected unless that flag is true.
+3. Leave `certificate_arn` and `ses_from_email` empty for a first HTTP launch without mail.
+
+Do not set `marketplace_enforce_container_license`, `AWS_MARKETPLACE_ENFORCE_CONTAINER_LICENSE`, or buyer-supplied product codes. Those values cannot disable licensing on 1.0.3+.
 
 ```sh
 terraform init
@@ -77,15 +81,24 @@ Helm does **not** create RDS, Redis, or S3. Provision those plus an IRSA role fi
 ```sh
 helm upgrade --install grick charts/grick --namespace grick --create-namespace \
   -f charts/grick/values-aws-marketplace.yaml \
-  --set env.AWS_MARKETPLACE_PRODUCT_CODE=<product-code> \
-  --set env.AWS_MARKETPLACE_PRODUCT_SKU=<product-id> \
-  --set env.AWS_MARKETPLACE_ENFORCE_CONTAINER_LICENSE=false \
   --set env.EVIDENCE_STORAGE_PROVIDER=s3 \
   --set env.EVIDENCE_S3_BUCKET=<your-bucket> \
   --set secretEnv.STORAGE_PROVIDER=s3
 ```
 
 Attach [`iam-policy.json`](iam-policy.json) plus S3/KMS (and `ses:SendEmail` if using SES) to the IRSA role. Terminate HTTPS on your Ingress or load balancer.
+
+## Upgrade from 1.0.1 / 1.0.2
+
+Those images could skip `CheckoutLicense` when `AWS_MARKETPLACE_ENFORCE_CONTAINER_LICENSE=false`. That path is removed.
+
+1. Subscribe (or keep an active subscription) in the buyer account.
+2. Confirm the ECS task role / IRSA role still allows `license-manager:CheckoutLicense` and the other actions in `iam-policy.json`.
+3. Pin `container_image` / Helm `image.tag` to **1.0.3 or newer**.
+4. Apply this repository. Existing `marketplace_*` Terraform/CloudFormation values are ignored and can stay in old variable files.
+5. New tasks must pass entitlement validation before they serve traffic.
+
+If a 1.0.3+ task starts without a valid entitlement, it exits with a non-zero status and does not serve GRiCk.
 
 ## Health
 

@@ -94,11 +94,11 @@ output "stack_name" {
 }
 
 output "marketplace_product_sku" {
-  description = "License Manager ProductSKU used by CheckoutLicense. Empty disables the check."
-  value       = var.marketplace_product_sku
+  description = "Deprecated. GRiCk 1.0.3+ embeds ProductSKU prod-vgebc2b2lowoq in the Marketplace image."
+  value       = "prod-vgebc2b2lowoq"
 }
 
-output "marketplace_enforce_container_license" {
-  description = "Whether tasks run CheckoutLicense at boot. false is required for listing images 1.0.1/1.0.2."
-  value       = var.marketplace_enforce_container_license
+output "marketplace_license_enforcement" {
+  description = "Marketplace images 1.0.3+ always enforce CheckoutLicense. Deployment configuration cannot disable it."
+  value       = "mandatory"
 }

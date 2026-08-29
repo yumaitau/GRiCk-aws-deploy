@@ -118,22 +118,25 @@ data "aws_iam_policy_document" "task" {
     }
   }
 
-  dynamic "statement" {
-    for_each = var.marketplace_product_code == "" ? [] : [1]
-    content {
-      sid    = "AwsMarketplaceContainerLicense"
-      effect = "Allow"
-      actions = [
-        "aws-marketplace:RegisterUsage",
-        "aws-marketplace:MeterUsage",
-        "license-manager:CheckoutLicense",
-        "license-manager:GetLicense",
-        "license-manager:CheckInLicense",
-        "license-manager:ExtendLicenseConsumption",
-        "license-manager:ListReceivedLicenses",
-      ]
-      resources = ["*"]
-    }
+  # AWS Marketplace container contract licensing. These APIs do not support
+  # resource-level permissions; AWS documents Resource "*" in
+  # AWSLicenseManagerConsumptionPolicy and the container License Manager guide.
+  # CheckoutLicense: required entitlement check at boot and every 15 minutes.
+  # ExtendLicenseConsumption: keep a PROVISIONAL checkout alive past 60 minutes.
+  # CheckInLicense: return a provisional checkout to the pool.
+  # GetLicense: inspect purchased license status.
+  # ListReceivedLicenses: listed by the official Marketplace container IAM example.
+  statement {
+    sid    = "AwsMarketplaceContainerLicense"
+    effect = "Allow"
+    actions = [
+      "license-manager:CheckoutLicense",
+      "license-manager:GetLicense",
+      "license-manager:CheckInLicense",
+      "license-manager:ExtendLicenseConsumption",
+      "license-manager:ListReceivedLicenses",
+    ]
+    resources = ["*"]
   }
 }
 

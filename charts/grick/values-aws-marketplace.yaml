@@ -13,9 +13,6 @@
 #     -f charts/grick/values-aws-marketplace.yaml \
 #     --set env.NEXT_PUBLIC_APP_URL=https://grick.example.com \
 #     --set env.BETTER_AUTH_URL=https://grick.example.com \
-#     --set env.AWS_MARKETPLACE_PRODUCT_CODE=<listing-product-code> \
-#     --set env.AWS_MARKETPLACE_PRODUCT_SKU=<listing-product-id> \
-#     --set env.AWS_MARKETPLACE_ENFORCE_CONTAINER_LICENSE=false \
 #     --set env.EVIDENCE_STORAGE_PROVIDER=s3 \
 #     --set env.EVIDENCE_S3_BUCKET=<your-bucket> \
 #     --set secretEnv.STORAGE_PROVIDER=s3 \
@@ -26,17 +23,18 @@
 #     --set secretEnv.AUTH_SECRET='...' \
 #     --set secretEnv.APP_SECRET='...'
 #
-# Pin image.tag (or repository@digest via a custom image.repository) to the
-# listing digest. Marketplace ECR pulls need an entitled subscription, not a
-# GitHub token.
+# Pin image.tag (or repository@digest via a custom image.repository) to a
+# 1.0.3+ listing digest. Marketplace ECR pulls need an entitled subscription,
+# not a GitHub token.
 #
-# License Manager CheckoutLicense uses the pod IRSA role. Set
-# serviceAccount.annotations.eks.amazonaws.com/role-arn and attach
-# iam-policy.json plus S3/KMS (and ses:SendEmail if using SES).
+# The Marketplace image validates its entitlement at startup. Licensing cannot
+# be disabled through Helm values or environment variables. CheckoutLicense uses
+# the pod IRSA role. Set serviceAccount.annotations.eks.amazonaws.com/role-arn
+# and attach iam-policy.json plus S3/KMS (and ses:SendEmail if using SES).
 
 image:
   repository: 709825985650.dkr.ecr.us-east-1.amazonaws.com/yuma-it/grick-aws
-  tag: "1.0.2"
+  tag: "1.0.3"
   pullPolicy: IfNotPresent
 
 imagePullSecrets: []
@@ -50,8 +48,3 @@ serviceAccount:
 env:
   SIGNUP_MODE: open
   NEXT_PUBLIC_SIGNUP_MODE: open
-  AWS_MARKETPLACE_ENABLED: "true"
-  AWS_MARKETPLACE_FULFILLMENT: container
-  AWS_MARKETPLACE_PRICING_MODEL: contract
-  # 1.0.1/1.0.2 request Unit=None. Set true after 1.0.3.
-  AWS_MARKETPLACE_ENFORCE_CONTAINER_LICENSE: "false"

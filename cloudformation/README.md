@@ -8,7 +8,7 @@ Subscribe at https://aws.amazon.com/marketplace/pp?sku=8pjp6r3g4mw0nfmf8imsf9z1d
 
 1. Open CloudFormation in the target Region (`ap-southeast-2` recommended; `us-east-1` for Marketplace metering proof).
 2. Create stack → With new resources → Upload a template file → `grick-fargate.yaml`.
-3. Set **Marketplace product code** and **product ID (SKU)** from the listing. Pin **Container image** to this listing tag or digest.
+3. Pin **Container image** to a `1.0.3+` listing tag or digest. Marketplace product-code parameters are ignored.
 4. Set **Allowed ingress CIDR** to your office, VPN, or client range. Leave **Allow internet ingress** false. `0.0.0.0/0` is rejected unless that flag is true.
 6. Leave **ACM certificate ARN** and **SES From** empty for a first HTTP launch without mail.
 7. Acknowledge IAM capabilities. Create.
@@ -20,7 +20,7 @@ When the stack is `CREATE_COMPLETE`, open the `ApplicationUrl` output. First use
 ```sh
 cd cloudformation
 cp parameters.example.json parameters.json
-# edit MarketplaceProductCode, MarketplaceProductSku, ContainerImage, AllowedIngressCidr
+# edit ContainerImage and AllowedIngressCidr
 
 # Template is over the 51 KiB inline body limit; deploy uploads it to S3.
 aws cloudformation deploy \

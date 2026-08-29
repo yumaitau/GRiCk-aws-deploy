@@ -58,7 +58,7 @@ Metadata:
       MarketplaceProductSku:
         default: Listing product ID (SKU)
       MarketplaceEnforceContainerLicense:
-        default: CheckoutLicense at boot (false on 1.0.2)
+        default: Deprecated — ignored by 1.0.3+
       CertificateArn:
         default: ACM certificate ARN (HTTPS)
       SesFromEmail:
@@ -79,25 +79,25 @@ Parameters:
 
   ContainerImage:
     Type: String
-    Default: "709825985650.dkr.ecr.us-east-1.amazonaws.com/yuma-it/grick-aws:1.0.2"
+    Default: "709825985650.dkr.ecr.us-east-1.amazonaws.com/yuma-it/grick-aws:1.0.3"
     AllowedPattern: ".*(@sha256:[0-9a-f]{64}|:[A-Za-z0-9][A-Za-z0-9_.-]{0,127})$"
     Description: Marketplace ECR image tag or digest. Do not use :latest.
 
   MarketplaceProductCode:
     Type: String
     Default: ""
-    Description: AWS Marketplace product code. Required for subscribed tasks (CheckoutLicense).
+    Description: Deprecated and ignored. GRiCk 1.0.3+ embeds Marketplace product identity in the image.
 
   MarketplaceProductSku:
     Type: String
     Default: ""
-    Description: AWS Marketplace product ID used as License Manager ProductSKU.
+    Description: Deprecated and ignored. GRiCk 1.0.3+ embeds the License Manager ProductSKU in the image.
 
   MarketplacePublicKeyVersion:
     Type: Number
     Default: 1
     MinValue: 1
-    Description: PublicKeyVersion from Seller Central.
+    Description: Deprecated and ignored. Hourly RegisterUsage is not used by the public contract listing.
 
   MarketplaceEnforceContainerLicense:
     Type: String
@@ -105,7 +105,7 @@ Parameters:
     AllowedValues:
       - "true"
       - "false"
-    Description: Run CheckoutLicense at task boot. false for listing images 1.0.1/1.0.2. Set true after 1.0.3.
+    Description: Deprecated and ignored. Marketplace images 1.0.3+ always enforce CheckoutLicense.
 
   VpcCidr:
     Type: String
@@ -1026,7 +1026,6 @@ Resources:
 
   TaskMarketplacePolicy:
     Type: AWS::IAM::Policy
-    Condition: HasMarketplace
     Properties:
       PolicyName: aws-marketplace-container-license
       Roles:
@@ -1037,8 +1036,6 @@ Resources:
           - Sid: AwsMarketplaceContainerLicense
             Effect: Allow
             Action:
-              - aws-marketplace:RegisterUsage
-              - aws-marketplace:MeterUsage
               - license-manager:CheckoutLicense
               - license-manager:GetLicense
               - license-manager:CheckInLicense
@@ -1330,41 +1327,6 @@ Resources:
               - Name: SES_FROM_EMAIL
                 Value: !Ref SesFromEmail
               - !Ref AWS::NoValue
-            - !If
-              - HasMarketplace
-              - Name: AWS_MARKETPLACE_ENABLED
-                Value: "true"
-              - !Ref AWS::NoValue
-            - !If
-              - HasMarketplace
-              - Name: AWS_MARKETPLACE_FULFILLMENT
-                Value: container
-              - !Ref AWS::NoValue
-            - !If
-              - HasMarketplace
-              - Name: AWS_MARKETPLACE_PRICING_MODEL
-                Value: contract
-              - !Ref AWS::NoValue
-            - !If
-              - HasMarketplace
-              - Name: AWS_MARKETPLACE_PRODUCT_CODE
-                Value: !Ref MarketplaceProductCode
-              - !Ref AWS::NoValue
-            - !If
-              - HasMarketplace
-              - Name: AWS_MARKETPLACE_PUBLIC_KEY_VERSION
-                Value: !Sub "${MarketplacePublicKeyVersion}"
-              - !Ref AWS::NoValue
-            - !If
-              - HasMarketplace
-              - Name: AWS_MARKETPLACE_ENFORCE_CONTAINER_LICENSE
-                Value: !Ref MarketplaceEnforceContainerLicense
-              - !Ref AWS::NoValue
-            - !If
-              - HasMarketplaceSku
-              - Name: AWS_MARKETPLACE_PRODUCT_SKU
-                Value: !Ref MarketplaceProductSku
-              - !Ref AWS::NoValue
           Secrets:
             - Name: DATABASE_URL
               ValueFrom: !Sub "${RuntimeSecret}:DATABASE_URL::"
@@ -1472,41 +1434,6 @@ Resources:
               - Name: SES_FROM_EMAIL
                 Value: !Ref SesFromEmail
               - !Ref AWS::NoValue
-            - !If
-              - HasMarketplace
-              - Name: AWS_MARKETPLACE_ENABLED
-                Value: "true"
-              - !Ref AWS::NoValue
-            - !If
-              - HasMarketplace
-              - Name: AWS_MARKETPLACE_FULFILLMENT
-                Value: container
-              - !Ref AWS::NoValue
-            - !If
-              - HasMarketplace
-              - Name: AWS_MARKETPLACE_PRICING_MODEL
-                Value: contract
-              - !Ref AWS::NoValue
-            - !If
-              - HasMarketplace
-              - Name: AWS_MARKETPLACE_PRODUCT_CODE
-                Value: !Ref MarketplaceProductCode
-              - !Ref AWS::NoValue
-            - !If
-              - HasMarketplace
-              - Name: AWS_MARKETPLACE_PUBLIC_KEY_VERSION
-                Value: !Sub "${MarketplacePublicKeyVersion}"
-              - !Ref AWS::NoValue
-            - !If
-              - HasMarketplace
-              - Name: AWS_MARKETPLACE_ENFORCE_CONTAINER_LICENSE
-                Value: !Ref MarketplaceEnforceContainerLicense
-              - !Ref AWS::NoValue
-            - !If
-              - HasMarketplaceSku
-              - Name: AWS_MARKETPLACE_PRODUCT_SKU
-                Value: !Ref MarketplaceProductSku
-              - !Ref AWS::NoValue
           Secrets:
             - Name: DATABASE_URL
               ValueFrom: !Sub "${RuntimeSecret}:DATABASE_URL::"
@@ -1604,41 +1531,6 @@ Resources:
               - HasSes
               - Name: SES_FROM_EMAIL
                 Value: !Ref SesFromEmail
-              - !Ref AWS::NoValue
-            - !If
-              - HasMarketplace
-              - Name: AWS_MARKETPLACE_ENABLED
-                Value: "true"
-              - !Ref AWS::NoValue
-            - !If
-              - HasMarketplace
-              - Name: AWS_MARKETPLACE_FULFILLMENT
-                Value: container
-              - !Ref AWS::NoValue
-            - !If
-              - HasMarketplace
-              - Name: AWS_MARKETPLACE_PRICING_MODEL
-                Value: contract
-              - !Ref AWS::NoValue
-            - !If
-              - HasMarketplace
-              - Name: AWS_MARKETPLACE_PRODUCT_CODE
-                Value: !Ref MarketplaceProductCode
-              - !Ref AWS::NoValue
-            - !If
-              - HasMarketplace
-              - Name: AWS_MARKETPLACE_PUBLIC_KEY_VERSION
-                Value: !Sub "${MarketplacePublicKeyVersion}"
-              - !Ref AWS::NoValue
-            - !If
-              - HasMarketplace
-              - Name: AWS_MARKETPLACE_ENFORCE_CONTAINER_LICENSE
-                Value: !Ref MarketplaceEnforceContainerLicense
-              - !Ref AWS::NoValue
-            - !If
-              - HasMarketplaceSku
-              - Name: AWS_MARKETPLACE_PRODUCT_SKU
-                Value: !Ref MarketplaceProductSku
               - !Ref AWS::NoValue
           Secrets:
             - Name: DATABASE_URL
