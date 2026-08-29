@@ -29,3 +29,4 @@ skip-check:
   - CKV2_AWS_50 # Redis Multi-AZ is an opt-in production switch
   - CKV_AWS_161 # App authenticates to Postgres with Secrets Manager, not IAM DB auth
   - CKV2_AWS_30 # postgresql and upgrade logs are already exported
+  - CKV_AWS_356 # License Manager CheckoutLicense and related APIs do not support resource ARNs
