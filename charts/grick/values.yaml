@@ -97,7 +97,7 @@ migration:
   asHelmHook: true
   args:
     - node
-    - dist/migrate.mjs
+    - dist/migrate.cjs
   resources:
     requests:
       cpu: 100m

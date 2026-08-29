@@ -148,7 +148,7 @@ resource "aws_ecs_task_definition" "migration" {
       name        = "migration"
       image       = var.container_image
       essential   = true
-      command     = ["node", "dist/migrate.mjs"]
+      command     = ["node", "dist/migrate.cjs"]
       environment = concat(local.common_environment, local.ses_environment, local.marketplace_environment)
       secrets     = local.common_secrets
       logConfiguration = {

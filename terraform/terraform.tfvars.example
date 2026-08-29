@@ -2,8 +2,8 @@ aws_region      = "ap-southeast-2"
 name_prefix     = "grick"
 environment     = "prod"
 # Pin to this listing tag or, better, the listing digest from Seller Central.
-# Use 1.0.5 or newer. Images 1.0.1 and 1.0.2 are unsupported.
-container_image = "709825985650.dkr.ecr.us-east-1.amazonaws.com/yuma-it/grick-aws:1.0.5"
+# Use 1.0.6 or newer. Images 1.0.1 and 1.0.2 are unsupported. 1.0.5 ESM enforcer is broken.
+container_image = "709825985650.dkr.ecr.us-east-1.amazonaws.com/yuma-it/grick-aws:1.0.6"
 
 # Marketplace product identity is baked into the 1.0.3+ image.
 # Do not set AWS_MARKETPLACE_* environment variables to disable licensing.
