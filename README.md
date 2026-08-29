@@ -126,6 +126,10 @@ GRICK_ALLOW_DESTROY=yes ./destroy.sh -var-file=terraform.tfvars
 
 Empty the evidence bucket first if objects exist.
 
+## CI
+
+Pushes and pull requests to `main` run [`.github/workflows/security.yml`](.github/workflows/security.yml): Terraform fmt and validate, Helm lint, Checkov, and Trivy.
+
 ## Support
 
 https://grick.snagspot.app
