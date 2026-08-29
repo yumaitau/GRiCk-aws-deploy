@@ -10,7 +10,7 @@ AWS Marketplace always shows `docker login` + `docker pull` for container listin
 
 The GRiCk AWS Marketplace distribution validates its AWS Marketplace entitlement at runtime with AWS License Manager `CheckoutLicense`. Marketplace licensing cannot be disabled through Docker, ECS, Terraform, Helm, or environment configuration. The ECS task role must permit the required AWS License Manager operations.
 
-Use image **1.0.4 or newer** (`linux/amd64` + `linux/arm64`). The `1.0.3` tag is linux/arm64 only. Images `1.0.1` and `1.0.2` allowed a temporary license-disable flag and are unsupported.
+Use image **1.0.5 or newer** (`linux/amd64` + `linux/arm64`). The `1.0.3` tag is linux/arm64 only. Images `1.0.1` and `1.0.2` allowed a temporary license-disable flag and are unsupported.
 
 ## ECS Fargate — CloudFormation (AWS Console)
 
@@ -94,7 +94,7 @@ Those images could skip `CheckoutLicense` when `AWS_MARKETPLACE_ENFORCE_CONTAINE
 
 1. Subscribe (or keep an active subscription) in the buyer account.
 2. Confirm the ECS task role / IRSA role still allows `license-manager:CheckoutLicense` and the other actions in `iam-policy.json`.
-3. Pin `container_image` / Helm `image.tag` to **1.0.3 or newer**.
+3. Pin `container_image` / Helm `image.tag` to **1.0.5 or newer**.
 4. Apply this repository. Existing `marketplace_*` Terraform/CloudFormation values are ignored and can stay in old variable files.
 5. New tasks must pass entitlement validation before they serve traffic.
 
