@@ -13,7 +13,7 @@ Subscribe at https://aws.amazon.com/marketplace/pp?sku=8pjp6r3g4mw0nfmf8imsf9z1d
 6. Leave **ACM certificate ARN** and **SES From** empty for a first HTTP launch without mail.
 7. Acknowledge IAM capabilities. Create.
 
-When the stack is `CREATE_COMPLETE`, open the `ApplicationUrl` output. First user registers at `/sign-up`, then creates the organisation at `/onboarding`.
+When the stack is `CREATE_COMPLETE`, open the `ApplicationUrl` output. First user registers at `/sign-up`, then creates the organisation at `/onboarding`. Consider Amazon Bedrock on that form for in-account AI (Claude in your Region via the task role): ATO explainers, risk summaries, evidence-gap review, and ITSA/CISO draft briefs. Enable the model in Bedrock model access. Not required to boot.
 
 ## CLI
 

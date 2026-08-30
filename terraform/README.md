@@ -30,7 +30,10 @@ Marketplace buyers: one `terraform apply`. Image entrypoint waits for Postgres,
 applies Drizzle migrations (advisory-locked across web+worker), then starts the
 task command. Secrets, RDS, Redis, and S3 are created by this stack. First
 visitor registers at `/sign-up` (`SIGNUP_MODE=open`) and creates the organisation
-at `/onboarding`. No seed admin is baked in. Leave `ses_from_email` empty until
+at `/onboarding`. No seed admin is baked in. Consider Amazon Bedrock on that
+form for in-account AI (Claude in your Region via the task role): ATO explainers,
+risk summaries, evidence-gap review, and ITSA/CISO draft briefs. Enable the
+model in Bedrock model access. Leave `ses_from_email` empty until
 that first account exists — production email verification turns on only when SES
 (or another provider) is configured. Set `SIGNUP_MODE=invite_only` later to lock
 public registration.

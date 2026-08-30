@@ -38,7 +38,7 @@ aws cloudformation deploy \
   --parameter-overrides $(python3 -c 'import json; print(" ".join("%s=%s" % (p["ParameterKey"], p["ParameterValue"]) for p in json.load(open("parameters.json"))))')
 ```
 
-Open the `ApplicationUrl` output. First user registers at `/sign-up`, then creates the organisation at `/onboarding`. No seed admin is baked into the image.
+Open the `ApplicationUrl` output. First user registers at `/sign-up`, then creates the organisation at `/onboarding`. No seed admin is baked into the image. On that form, consider Amazon Bedrock for in-account AI: Claude runs in your Region via the task role (no access keys). You get an ATO assistant that explains packages, summarises risks, reviews evidence gaps, drafts ITSA and CISO/AO briefs, and answers questions grounded in your records. Outputs are advisory and audit-logged. Enable the Claude model under Amazon Bedrock model access in the same Region, and allow `bedrock:InvokeModel` on the task role. You can skip this or connect Azure OpenAI later under Settings → AI assistant. Not required to boot.
 
 HTTPS later: ACM certificate in the ALB Region, then set `CertificateArn` and `AppUrl`. TLS terminates on the ALB. It is not an extra IAM role.
 
