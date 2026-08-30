@@ -156,8 +156,8 @@ run "marketplace_identity_is_not_buyer_configurable" {
   command = plan
 
   variables {
-    marketplace_product_code               = "buyer-forged-product-code"
-    marketplace_product_sku                = "buyer-forged-product-sku"
+    marketplace_product_code              = "buyer-forged-product-code"
+    marketplace_product_sku               = "buyer-forged-product-sku"
     marketplace_enforce_container_license = false
   }
 
