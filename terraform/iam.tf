@@ -77,7 +77,7 @@ data "aws_iam_policy_document" "task" {
     condition {
       test     = "StringLike"
       variable = "s3:prefix"
-      values   = ["ato-evidence/*"]
+      values   = ["ato-evidence/*", "telemetry-inbox/*", "telemetry-processed/*"]
     }
   }
 
@@ -89,7 +89,11 @@ data "aws_iam_policy_document" "task" {
       "s3:PutObject",
       "s3:DeleteObject",
     ]
-    resources = ["${aws_s3_bucket.evidence.arn}/ato-evidence/*"]
+    resources = [
+      "${aws_s3_bucket.evidence.arn}/ato-evidence/*",
+      "${aws_s3_bucket.evidence.arn}/telemetry-inbox/*",
+      "${aws_s3_bucket.evidence.arn}/telemetry-processed/*",
+    ]
   }
 
   statement {
