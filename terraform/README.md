@@ -69,9 +69,9 @@ terraform output evidence_bucket_name
 
 Outputs never contain secret values.
 
-## Required vs optional AWS services
+## Required and default-enabled AWS services
 
-This stack always creates the services GRiCk needs to boot:
+This stack always creates the services GRiCk needs to boot and enables GuardDuty malware protection by default:
 
 - VPC, NAT, ALB, ECS Fargate (web + worker)
 - RDS PostgreSQL 16

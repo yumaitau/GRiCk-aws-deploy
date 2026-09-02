@@ -26,7 +26,7 @@ cp parameters.example.json parameters.json
 aws cloudformation deploy \
   --stack-name grick \
   --template-file grick-fargate.yaml \
-  --capabilities CAPABILITY_IAM \
+  --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM \
   --parameter-overrides $(python3 -c 'import json; print(" ".join("%s=%s" % (p["ParameterKey"], p["ParameterValue"]) for p in json.load(open("parameters.json"))))')
 
 aws cloudformation describe-stacks --stack-name grick \

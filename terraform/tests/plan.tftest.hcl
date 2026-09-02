@@ -157,6 +157,27 @@ run "secure_test_baseline" {
   }
 }
 
+run "guardduty_explicit_opt_out" {
+  command = plan
+
+  variables {
+    enable_guardduty_malware_protection = false
+  }
+
+  assert {
+    condition     = length(aws_guardduty_malware_protection_plan.evidence) == 0
+    error_message = "Explicit GuardDuty opt-out must omit the malware protection plan."
+  }
+
+  assert {
+    condition = anytrue([
+      for variable in local.common_environment :
+      variable.name == "EVIDENCE_MALWARE_SCAN_MODE" && variable.value == "off"
+    ])
+    error_message = "Explicit GuardDuty opt-out must disable storage scan-tag enforcement."
+  }
+}
+
 run "reject_world_open_ingress" {
   command = plan
 
