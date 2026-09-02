@@ -50,6 +50,7 @@ Metadata:
           - CacheHighAvailability
           - EnableWaf
           - EnableAwsBackup
+          - EnableGuardDutyMalwareProtection
     ParameterLabels:
       ContainerImage:
         default: Marketplace container image
@@ -174,6 +175,12 @@ Parameters:
     AllowedValues: ["true", "false"]
     Description: Protect RDS and the evidence bucket with AWS Backup.
 
+  EnableGuardDutyMalwareProtection:
+    Type: String
+    Default: "true"
+    AllowedValues: ["true", "false"]
+    Description: Enable GuardDuty Malware Protection for the S3 evidence prefix and tag scan results.
+
   WebDesiredCount:
     Type: Number
     Default: 1
@@ -203,6 +210,7 @@ Conditions:
   CacheIsHa: !Equals [!Ref CacheHighAvailability, "true"]
   WafEnabled: !Equals [!Ref EnableWaf, "true"]
   BackupEnabled: !Equals [!Ref EnableAwsBackup, "true"]
+  GuardDutyMalwareEnabled: !Equals [!Ref EnableGuardDutyMalwareProtection, "true"]
 
 Rules:
   NoWorldOpenIngress:
@@ -765,6 +773,97 @@ Resources:
               Bool:
                 aws:SecureTransport: "false"
 
+  GuardDutyMalwareRole:
+    Type: AWS::IAM::Role
+    Condition: GuardDutyMalwareEnabled
+    Properties:
+      RoleName: !Sub ${NamePrefix}-${Environment}-guardduty-malware
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: malware-protection-plan.guardduty.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: scan-evidence
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: AllowManagedRuleToSendS3EventsToGuardDuty
+                Effect: Allow
+                Action:
+                  - events:PutRule
+                  - events:DeleteRule
+                  - events:PutTargets
+                  - events:RemoveTargets
+                Resource: !Sub arn:${AWS::Partition}:events:${AWS::Region}:${AWS::AccountId}:rule/DO-NOT-DELETE-AmazonGuardDutyMalwareProtectionS3*
+                Condition:
+                  StringLike:
+                    events:ManagedBy: malware-protection-plan.guardduty.amazonaws.com
+              - Sid: AllowGuardDutyToMonitorEventBridgeManagedRule
+                Effect: Allow
+                Action:
+                  - events:DescribeRule
+                  - events:ListTargetsByRule
+                Resource: !Sub arn:${AWS::Partition}:events:${AWS::Region}:${AWS::AccountId}:rule/DO-NOT-DELETE-AmazonGuardDutyMalwareProtectionS3*
+              - Sid: AllowPostScanTag
+                Effect: Allow
+                Action:
+                  - s3:PutObjectTagging
+                  - s3:GetObjectTagging
+                  - s3:PutObjectVersionTagging
+                  - s3:GetObjectVersionTagging
+                Resource: !Sub ${EvidenceBucket.Arn}/ato-evidence/*
+              - Sid: AllowEnableS3EventBridgeEvents
+                Effect: Allow
+                Action:
+                  - s3:PutBucketNotification
+                  - s3:GetBucketNotification
+                Resource: !GetAtt EvidenceBucket.Arn
+              - Sid: AllowPutValidationObject
+                Effect: Allow
+                Action: s3:PutObject
+                Resource: !Sub ${EvidenceBucket.Arn}/malware-protection-resource-validation-object
+              - Sid: AllowCheckBucketOwnership
+                Effect: Allow
+                Action: s3:ListBucket
+                Resource: !GetAtt EvidenceBucket.Arn
+              - Sid: AllowMalwareScan
+                Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:GetObjectVersion
+                Resource: !Sub ${EvidenceBucket.Arn}/ato-evidence/*
+              - Sid: AllowDecryptForMalwareScan
+                Effect: Allow
+                Action:
+                  - kms:GenerateDataKey
+                  - kms:Decrypt
+                Resource: !GetAtt EncryptionKey.Arn
+                Condition:
+                  StringLike:
+                    kms:ViaService: !Sub s3.${AWS::Region}.amazonaws.com
+
+  GuardDutyMalwareProtectionPlan:
+    Type: AWS::GuardDuty::MalwareProtectionPlan
+    Condition: GuardDutyMalwareEnabled
+    DependsOn:
+      - EvidenceBucketPolicy
+    Properties:
+      Role: !GetAtt GuardDutyMalwareRole.Arn
+      ProtectedResource:
+        S3Bucket:
+          BucketName: !Ref EvidenceBucket
+          ObjectPrefixes:
+            - ato-evidence/
+      Actions:
+        Tagging:
+          Status: ENABLED
+      Tags:
+        - Key: Application
+          Value: GRiCk
+
   DatabasePassword:
     Type: AWS::SecretsManager::Secret
     DeletionPolicy: Delete
@@ -1001,13 +1100,19 @@ Resources:
                   StringLike:
                     s3:prefix:
                       - ato-evidence/*
+                      - telemetry-inbox/*
+                      - telemetry-processed/*
               - Sid: ManageEvidenceObjects
                 Effect: Allow
                 Action:
                   - s3:GetObject
+                  - s3:GetObjectTagging
                   - s3:PutObject
                   - s3:DeleteObject
-                Resource: !Sub ${EvidenceBucket.Arn}/ato-evidence/*
+                Resource:
+                  - !Sub ${EvidenceBucket.Arn}/ato-evidence/*
+                  - !Sub ${EvidenceBucket.Arn}/telemetry-inbox/*
+                  - !Sub ${EvidenceBucket.Arn}/telemetry-processed/*
               - Sid: UseEvidenceKey
                 Effect: Allow
                 Action:
@@ -1316,8 +1421,12 @@ Resources:
               Value: !Ref EvidenceBucket
             - Name: EVIDENCE_S3_REGION
               Value: !Ref AWS::Region
+            - Name: EVIDENCE_MALWARE_SCAN_MODE
+              Value: !If [GuardDutyMalwareEnabled, storage, "off"]
             - Name: AWS_REGION
               Value: !Ref AWS::Region
+            - Name: AWS_KMS_KEY_ARN
+              Value: !GetAtt EncryptionKey.Arn
             - Name: GRICK_VALIDATE_RUNTIME_CONFIG
               Value: "true"
             - Name: CRON_TIMEZONE
@@ -1425,8 +1534,12 @@ Resources:
               Value: !Ref EvidenceBucket
             - Name: EVIDENCE_S3_REGION
               Value: !Ref AWS::Region
+            - Name: EVIDENCE_MALWARE_SCAN_MODE
+              Value: !If [GuardDutyMalwareEnabled, storage, "off"]
             - Name: AWS_REGION
               Value: !Ref AWS::Region
+            - Name: AWS_KMS_KEY_ARN
+              Value: !GetAtt EncryptionKey.Arn
             - Name: GRICK_VALIDATE_RUNTIME_CONFIG
               Value: "true"
             - Name: CRON_TIMEZONE
@@ -1525,8 +1638,12 @@ Resources:
               Value: !Ref EvidenceBucket
             - Name: EVIDENCE_S3_REGION
               Value: !Ref AWS::Region
+            - Name: EVIDENCE_MALWARE_SCAN_MODE
+              Value: !If [GuardDutyMalwareEnabled, storage, "off"]
             - Name: AWS_REGION
               Value: !Ref AWS::Region
+            - Name: AWS_KMS_KEY_ARN
+              Value: !GetAtt EncryptionKey.Arn
             - Name: GRICK_VALIDATE_RUNTIME_CONFIG
               Value: "true"
             - Name: CRON_TIMEZONE
@@ -1729,6 +1846,11 @@ Outputs:
     Description: Private KMS-encrypted S3 evidence bucket.
     Value: !Ref EvidenceBucket
 
+  GuardDutyMalwareProtectionPlanArn:
+    Condition: GuardDutyMalwareEnabled
+    Description: GuardDuty Malware Protection for S3 plan ARN.
+    Value: !GetAtt GuardDutyMalwareProtectionPlan.Arn
+
   RuntimeSecretArn:
     Description: Secrets Manager ARN referenced by task definitions. Secret values are never output.
     Value: !Ref RuntimeSecret
@@ -1736,4 +1858,3 @@ Outputs:
   MigrationLogGroupName:
     Description: CloudWatch log group for migration tasks.
     Value: !Ref MigrationLogGroup
-

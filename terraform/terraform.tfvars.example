@@ -27,6 +27,7 @@ database_multi_az             = false
 cache_high_availability       = false
 single_nat_gateway            = true
 enable_aws_backup             = false
+enable_guardduty_malware_protection = true
 force_destroy_backup_vault    = true
 force_destroy_evidence_bucket = true
 
@@ -40,5 +41,6 @@ force_destroy_evidence_bucket = true
 # cache_high_availability        = true
 # single_nat_gateway             = false
 # enable_aws_backup              = true
+# enable_guardduty_malware_protection = true
 # force_destroy_backup_vault     = false
 # force_destroy_evidence_bucket  = false

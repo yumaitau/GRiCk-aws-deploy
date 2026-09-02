@@ -1,6 +1,6 @@
 # GRiCk on AWS ECS Fargate (CloudFormation)
 
-Native CloudFormation for buyers who do not want Terraform. Same first-launch shape as the Terraform stack in this repo: VPC, ALB, ECS Fargate (web + worker), RDS PostgreSQL 16, ElastiCache Redis (TLS, `maxmemory-policy=noeviction` for the BullMQ queue), Secrets Manager, KMS, and a private S3 evidence bucket. Cron jobs run only in the worker task.
+Native CloudFormation for buyers who do not want Terraform. Same first-launch shape as the Terraform stack in this repo: VPC, ALB, ECS Fargate (web + worker), RDS PostgreSQL 16, ElastiCache Redis (TLS, `maxmemory-policy=noeviction` for the BullMQ queue), Secrets Manager, KMS, a private S3 evidence bucket, and GuardDuty Malware Protection for uploaded evidence. Cron jobs run only in the worker task.
 
 Subscribe at https://aws.amazon.com/marketplace/pp?sku=8pjp6r3g4mw0nfmf8imsf9z1d before you create the stack. The image is Marketplace ECR, not GHCR.
 
@@ -44,6 +44,7 @@ The image entrypoint waits for Postgres, migrates, then starts. A separate migra
 | `SesFromEmail` | No mail | Verified SES identity. Stack sets `EMAIL_PROVIDER=ses` and `ses:SendEmail` on the task role. |
 | `DatabaseMultiAz` / `CacheHighAvailability` | Off | Production resilience. |
 | `EnableAwsBackup` | Off | Daily AWS Backup of RDS + evidence bucket. |
+| `EnableGuardDutyMalwareProtection` | On | Scans `ato-evidence/` uploads and tags results for GRiCk quarantine handling. GuardDuty usage charges and service terms apply. |
 | `AllowedIngressCidr` | none (required) | Office, VPN, or client CIDR. |
 | `AllowInternetIngress` | `false` | Set `true` only to allow `0.0.0.0/0` on the ALB. |
 
