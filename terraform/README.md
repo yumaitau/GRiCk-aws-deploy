@@ -8,6 +8,7 @@ Terraform reference stack for a buyer-owned deployment in `ap-southeast-2`:
 - ECS Fargate `X86_64` task definitions for web (`node server.js`), worker (`node dist/worker.cjs`), and one-shot migration roles. Cron jobs run only in the worker via BullMQ on Redis.
 - RDS PostgreSQL 16 and TLS-only ElastiCache Redis (`maxmemory-policy=noeviction`) with no public route or public address.
 - KMS-encrypted, versioned, public-blocked S3 evidence bucket.
+- GuardDuty Malware Protection for S3 on the evidence prefix, with scan-result object tags consumed by GRiCk quarantine controls.
 - Secrets Manager runtime secret, ECS execution role, and least-privilege S3 task role. No AWS access keys enter task definitions.
 - CloudWatch logs and Container Insights, ALB readiness checks, optional WAF, and optional AWS Backup.
 
@@ -68,14 +69,15 @@ terraform output evidence_bucket_name
 
 Outputs never contain secret values.
 
-## Required vs optional AWS services
+## Required and default-enabled AWS services
 
-This stack always creates the services GRiCk needs to boot:
+This stack always creates the services GRiCk needs to boot and enables GuardDuty malware protection by default:
 
 - VPC, NAT, ALB, ECS Fargate (web + worker)
 - RDS PostgreSQL 16
 - ElastiCache Redis (TLS; `noeviction` so BullMQ queue keys are not dropped)
 - KMS-encrypted S3 evidence bucket + S3 gateway endpoint
+- GuardDuty Malware Protection for S3, including its least-privilege service role. Set `enable_guardduty_malware_protection=false` only for a disposable environment where quarantined uploads are intentionally disabled; GuardDuty usage charges and service terms apply when enabled.
 - Secrets Manager, CloudWatch logs
 - ECS execution role + task role with S3/KMS and License Manager `CheckoutLicense`
 
@@ -104,6 +106,7 @@ database_deletion_protection   = true
 cache_high_availability        = true
 single_nat_gateway             = false
 enable_aws_backup              = true
+enable_guardduty_malware_protection = true
 force_destroy_backup_vault     = false
 force_destroy_evidence_bucket  = false
 ```

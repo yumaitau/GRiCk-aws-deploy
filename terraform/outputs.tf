@@ -73,6 +73,21 @@ output "evidence_bucket_name" {
   value       = aws_s3_bucket.evidence.id
 }
 
+output "guardduty_malware_protection_plan_arn" {
+  description = "GuardDuty Malware Protection for S3 plan ARN, or null when explicitly disabled."
+  value       = try(aws_guardduty_malware_protection_plan.evidence[0].arn, null)
+}
+
+output "guardduty_malware_protection_status" {
+  description = "GuardDuty Malware Protection for S3 plan status, or DISABLED when explicitly disabled."
+  value       = try(aws_guardduty_malware_protection_plan.evidence[0].status, "DISABLED")
+}
+
+output "kms_key_arn" {
+  description = "KMS key used by the ECS workload for evidence and CMK envelope operations."
+  value       = aws_kms_key.this.arn
+}
+
 output "runtime_secret_arn" {
   description = "Secrets Manager ARN referenced by task definitions. Secret values are never output."
   value       = aws_secretsmanager_secret.runtime.arn

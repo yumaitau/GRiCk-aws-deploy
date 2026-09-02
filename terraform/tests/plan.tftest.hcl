@@ -96,6 +96,29 @@ run "secure_test_baseline" {
   }
 
   assert {
+    condition     = length(aws_guardduty_malware_protection_plan.evidence) == 1
+    error_message = "Secure baseline must enable GuardDuty Malware Protection for the evidence bucket."
+  }
+
+  assert {
+    condition     = aws_guardduty_malware_protection_plan.evidence[0].protected_resource[0].s3_bucket[0].object_prefixes == toset(["ato-evidence/"])
+    error_message = "GuardDuty Malware Protection must be scoped to the evidence object prefix."
+  }
+
+  assert {
+    condition     = aws_guardduty_malware_protection_plan.evidence[0].actions[0].tagging[0].status == "ENABLED"
+    error_message = "GuardDuty must tag objects so GRiCk can release or quarantine evidence."
+  }
+
+  assert {
+    condition = anytrue([
+      for variable in local.common_environment :
+      variable.name == "EVIDENCE_MALWARE_SCAN_MODE" && variable.value == "storage"
+    ])
+    error_message = "Fargate tasks must consume storage malware scan tags when protection is enabled."
+  }
+
+  assert {
     condition     = aws_elasticache_replication_group.this.transit_encryption_enabled
     error_message = "Redis traffic must require TLS."
   }
@@ -131,6 +154,27 @@ run "secure_test_baseline" {
   assert {
     condition     = aws_flow_log.this.traffic_type == "ALL"
     error_message = "VPC flow logs must capture all traffic."
+  }
+}
+
+run "guardduty_explicit_opt_out" {
+  command = plan
+
+  variables {
+    enable_guardduty_malware_protection = false
+  }
+
+  assert {
+    condition     = length(aws_guardduty_malware_protection_plan.evidence) == 0
+    error_message = "Explicit GuardDuty opt-out must omit the malware protection plan."
+  }
+
+  assert {
+    condition = anytrue([
+      for variable in local.common_environment :
+      variable.name == "EVIDENCE_MALWARE_SCAN_MODE" && variable.value == "off"
+    ])
+    error_message = "Explicit GuardDuty opt-out must disable storage scan-tag enforcement."
   }
 }
 

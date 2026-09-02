@@ -269,6 +269,12 @@ variable "enable_aws_backup" {
   default     = false
 }
 
+variable "enable_guardduty_malware_protection" {
+  type        = bool
+  description = "Enable GuardDuty Malware Protection for S3 on the evidence prefix and tag scanned objects. Keep enabled in production."
+  default     = true
+}
+
 variable "backup_retention_days" {
   type        = number
   description = "AWS Backup recovery point retention."

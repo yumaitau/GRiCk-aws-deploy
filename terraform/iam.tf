@@ -86,6 +86,7 @@ data "aws_iam_policy_document" "task" {
     effect = "Allow"
     actions = [
       "s3:GetObject",
+      "s3:GetObjectTagging",
       "s3:PutObject",
       "s3:DeleteObject",
     ]
