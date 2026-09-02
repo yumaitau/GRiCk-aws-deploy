@@ -57,6 +57,17 @@ run "secure_test_baseline" {
   }
 
   assert {
+    condition = (
+      local.container_hardening.linuxParameters.capabilities.add == [] &&
+      local.container_hardening.mountPoints == [] &&
+      local.container_hardening.portMappings == [] &&
+      local.container_hardening.systemControls == [] &&
+      local.container_hardening.volumesFrom == []
+    )
+    error_message = "Fargate task JSON must include ECS-normalized empty collections to prevent perpetual task definition replacement."
+  }
+
+  assert {
     condition = anytrue([
       for variable in local.common_environment :
       variable.name == "HOSTNAME" && variable.value == "0.0.0.0"
