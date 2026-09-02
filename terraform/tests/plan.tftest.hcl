@@ -101,6 +101,27 @@ run "secure_test_baseline" {
   }
 
   assert {
+    condition     = aws_elasticache_replication_group.this.parameter_group_name == aws_elasticache_parameter_group.this.name
+    error_message = "ElastiCache must use the BullMQ queue parameter group."
+  }
+
+  assert {
+    condition = anytrue([
+      for parameter in aws_elasticache_parameter_group.this.parameter :
+      parameter.name == "maxmemory-policy" && parameter.value == "noeviction"
+    ])
+    error_message = "BullMQ requires Redis maxmemory-policy=noeviction."
+  }
+
+  assert {
+    condition = anytrue([
+      for variable in local.common_environment :
+      variable.name == "CRON_TIMEZONE" && variable.value == "Australia/Sydney"
+    ])
+    error_message = "Fargate tasks must set CRON_TIMEZONE for BullMQ schedulers."
+  }
+
+  assert {
     condition = alltrue([
       for rule in aws_vpc_security_group_ingress_rule.alb : rule.cidr_ipv4 != "0.0.0.0/0" && rule.cidr_ipv4 != "::/0"
     ])

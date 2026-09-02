@@ -5,8 +5,8 @@ Buyer launch path: clone https://github.com/yumaitau/GRiCk-aws-deploy and start 
 Terraform reference stack for a buyer-owned deployment in `ap-southeast-2`:
 
 - Two-AZ VPC with public ALB subnets, private Fargate subnets, isolated data subnets, NAT egress, and an S3 gateway endpoint.
-- ECS Fargate `X86_64` task definitions for web, worker, and one-shot migration roles.
-- RDS PostgreSQL 16 and TLS-only ElastiCache Redis with no public route or public address.
+- ECS Fargate `X86_64` task definitions for web (`node server.js`), worker (`node dist/worker.cjs`), and one-shot migration roles. Cron jobs run only in the worker via BullMQ on Redis.
+- RDS PostgreSQL 16 and TLS-only ElastiCache Redis (`maxmemory-policy=noeviction`) with no public route or public address.
 - KMS-encrypted, versioned, public-blocked S3 evidence bucket.
 - Secrets Manager runtime secret, ECS execution role, and least-privilege S3 task role. No AWS access keys enter task definitions.
 - CloudWatch logs and Container Insights, ALB readiness checks, optional WAF, and optional AWS Backup.
@@ -74,7 +74,7 @@ This stack always creates the services GRiCk needs to boot:
 
 - VPC, NAT, ALB, ECS Fargate (web + worker)
 - RDS PostgreSQL 16
-- ElastiCache Redis (TLS to Redis; not public HTTPS)
+- ElastiCache Redis (TLS; `noeviction` so BullMQ queue keys are not dropped)
 - KMS-encrypted S3 evidence bucket + S3 gateway endpoint
 - Secrets Manager, CloudWatch logs
 - ECS execution role + task role with S3/KMS and License Manager `CheckoutLicense`

@@ -59,15 +59,31 @@ resource "aws_elasticache_subnet_group" "this" {
   subnet_ids = aws_subnet.data[*].id
 }
 
+resource "aws_elasticache_parameter_group" "this" {
+  name        = "${local.name}-queue"
+  family      = "redis7"
+  description = "GRiCk BullMQ queue. Do not evict job keys."
+
+  parameter {
+    name  = "maxmemory-policy"
+    value = "noeviction"
+  }
+
+  parameter {
+    name  = "timeout"
+    value = "0"
+  }
+}
+
 resource "aws_elasticache_replication_group" "this" {
   replication_group_id = "${local.name}-cache"
-  description          = "GRiCk Redis-compatible cache and queue"
+  description          = "GRiCk Redis-compatible cache and BullMQ job queue"
 
   engine               = "redis"
   engine_version       = "7.1"
   node_type            = var.cache_node_type
   port                 = 6379
-  parameter_group_name = "default.redis7"
+  parameter_group_name = aws_elasticache_parameter_group.this.name
 
   num_cache_clusters         = var.cache_high_availability ? 2 : 1
   automatic_failover_enabled = var.cache_high_availability

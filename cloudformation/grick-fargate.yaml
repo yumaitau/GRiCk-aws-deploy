@@ -184,7 +184,7 @@ Parameters:
     Type: Number
     Default: 1
     MinValue: 1
-    Description: Number of worker tasks.
+    Description: BullMQ cron consumer tasks. Keep at least 1; the web task does not run crons.
 
   LogRetentionDays:
     Type: Number
@@ -888,16 +888,25 @@ Resources:
         - !Ref DataSubnet1
         - !Ref DataSubnet2
 
+  CacheParameterGroup:
+    Type: AWS::ElastiCache::ParameterGroup
+    Properties:
+      CacheParameterGroupFamily: redis7
+      Description: GRiCk BullMQ queue. Do not evict job keys.
+      Properties:
+        maxmemory-policy: noeviction
+        timeout: "0"
+
   Cache:
     Type: AWS::ElastiCache::ReplicationGroup
     Properties:
       ReplicationGroupId: !Sub ${NamePrefix}-${Environment}-cache
-      ReplicationGroupDescription: GRiCk Redis-compatible cache and queue
+      ReplicationGroupDescription: GRiCk Redis-compatible cache and BullMQ job queue
       Engine: redis
       EngineVersion: "7.1"
       CacheNodeType: !Ref CacheNodeType
       Port: 6379
-      CacheParameterGroupName: default.redis7
+      CacheParameterGroupName: !Ref CacheParameterGroup
       NumCacheClusters: !If [CacheIsHa, 2, 1]
       AutomaticFailoverEnabled: !If [CacheIsHa, true, false]
       MultiAZEnabled: !If [CacheIsHa, true, false]
@@ -1311,6 +1320,8 @@ Resources:
               Value: !Ref AWS::Region
             - Name: GRICK_VALIDATE_RUNTIME_CONFIG
               Value: "true"
+            - Name: CRON_TIMEZONE
+              Value: Australia/Sydney
             - Name: ALLOW_INSECURE_PUBLIC_URL
               Value: !If [HasCertificate, "false", "true"]
             - Name: SIGNUP_MODE
@@ -1418,6 +1429,8 @@ Resources:
               Value: !Ref AWS::Region
             - Name: GRICK_VALIDATE_RUNTIME_CONFIG
               Value: "true"
+            - Name: CRON_TIMEZONE
+              Value: Australia/Sydney
             - Name: ALLOW_INSECURE_PUBLIC_URL
               Value: !If [HasCertificate, "false", "true"]
             - Name: SIGNUP_MODE
@@ -1516,6 +1529,8 @@ Resources:
               Value: !Ref AWS::Region
             - Name: GRICK_VALIDATE_RUNTIME_CONFIG
               Value: "true"
+            - Name: CRON_TIMEZONE
+              Value: Australia/Sydney
             - Name: ALLOW_INSECURE_PUBLIC_URL
               Value: !If [HasCertificate, "false", "true"]
             - Name: SIGNUP_MODE

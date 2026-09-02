@@ -16,7 +16,7 @@ Use image **1.0.8 or newer** (`linux/amd64` + `linux/arm64`). The `1.0.3` tag is
 
 No Terraform. Upload the template in the CloudFormation console or use the AWS CLI.
 
-Creates VPC, ALB, ECS Fargate (web + worker), RDS PostgreSQL 16, ElastiCache Redis, Secrets Manager, KMS, and a private S3 evidence bucket. The ECS task role already has S3, KMS, and License Manager `CheckoutLicense`.
+Creates VPC, ALB, ECS Fargate (web + worker), RDS PostgreSQL 16, ElastiCache Redis (BullMQ job queue, `maxmemory-policy=noeviction`), Secrets Manager, KMS, and a private S3 evidence bucket. Cron jobs run only in the worker task. The ECS task role already has S3, KMS, and License Manager `CheckoutLicense`.
 
 ```sh
 git clone https://github.com/yumaitau/GRiCk-aws-deploy.git

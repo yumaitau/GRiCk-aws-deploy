@@ -158,7 +158,7 @@ variable "web_desired_count" {
 
 variable "worker_desired_count" {
   type        = number
-  description = "Number of worker tasks."
+  description = "BullMQ cron consumer tasks. Keep at least 1; the web task does not run crons."
   default     = 1
 
   validation {
@@ -247,7 +247,7 @@ variable "database_backup_retention_days" {
 
 variable "cache_node_type" {
   type        = string
-  description = "ElastiCache node type."
+  description = "ElastiCache node type for the Redis/BullMQ queue."
   default     = "cache.t4g.micro"
 }
 

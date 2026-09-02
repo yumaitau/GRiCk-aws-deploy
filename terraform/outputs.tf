@@ -64,7 +64,7 @@ output "database_endpoint" {
 }
 
 output "cache_endpoint" {
-  description = "Private TLS Redis endpoint."
+  description = "Private TLS Redis/BullMQ primary endpoint."
   value       = "${aws_elasticache_replication_group.this.primary_endpoint_address}:6379"
 }
 

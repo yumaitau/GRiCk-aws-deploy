@@ -58,6 +58,7 @@ locals {
     { name = "EVIDENCE_S3_REGION", value = var.aws_region },
     { name = "AWS_REGION", value = var.aws_region },
     { name = "GRICK_VALIDATE_RUNTIME_CONFIG", value = "true" },
+    { name = "CRON_TIMEZONE", value = "Australia/Sydney" },
     { name = "ALLOW_INSECURE_PUBLIC_URL", value = var.certificate_arn == null ? "true" : "false" },
     # First account may self-register and create the organisation. Switch both
     # to invite_only after bootstrap if the buyer wants to block public sign-up.
