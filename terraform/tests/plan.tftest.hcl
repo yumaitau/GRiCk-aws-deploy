@@ -13,9 +13,21 @@ mock_provider "aws" {
     }
   }
 
+  mock_data "aws_partition" {
+    defaults = {
+      partition = "aws"
+    }
+  }
+
   mock_data "aws_iam_policy_document" {
     defaults = {
       json = "{\"Version\":\"2012-10-17\",\"Statement\":[]}"
+    }
+  }
+
+  mock_resource "aws_kms_key" {
+    defaults = {
+      arn = "arn:aws:kms:ap-southeast-2:123456789012:key/00000000-0000-0000-0000-000000000000"
     }
   }
 }
@@ -54,6 +66,11 @@ run "secure_test_baseline" {
       "ALL",
     )
     error_message = "Fargate web task must drop all Linux capabilities."
+  }
+
+  assert {
+    condition     = local.container_hardening.linuxParameters.initProcessEnabled == true
+    error_message = "Fargate tasks must enable the init process so orphaned children are reaped."
   }
 
   assert {
@@ -140,6 +157,11 @@ run "secure_test_baseline" {
   }
 
   assert {
+    condition     = aws_elasticache_replication_group.this.snapshot_retention_limit == 1
+    error_message = "ElastiCache must retain at least one daily snapshot by default."
+  }
+
+  assert {
     condition = anytrue([
       for parameter in aws_elasticache_parameter_group.this.parameter :
       parameter.name == "maxmemory-policy" && parameter.value == "noeviction"
@@ -165,6 +187,28 @@ run "secure_test_baseline" {
   assert {
     condition     = aws_flow_log.this.traffic_type == "ALL"
     error_message = "VPC flow logs must capture all traffic."
+  }
+
+  assert {
+    condition     = aws_lb.web.access_logs[0].enabled
+    error_message = "ALB access logs must be enabled."
+  }
+
+  assert {
+    condition     = aws_cloudwatch_metric_alarm.alb_unhealthy.threshold == 0
+    error_message = "Unhealthy-host alarm must fire on any unhealthy target."
+  }
+
+  assert {
+    condition     = aws_sns_topic.alarms.kms_master_key_id == aws_kms_key.this.arn
+    error_message = "CloudWatch alarm notifications must use the stack customer-managed key."
+  }
+
+  assert {
+    condition = anytrue([
+      for rule in aws_wafv2_web_acl.this[0].rule : rule.name == "AWSManagedRulesAnonymousIpList"
+    ])
+    error_message = "WAF must include the Anonymous IP managed rule group."
   }
 }
 
@@ -226,6 +270,11 @@ run "migration_only_bootstrap" {
     condition     = length(aws_ecs_service.web) == 0 && length(aws_ecs_service.worker) == 0
     error_message = "Bootstrap must be able to run migration before services exist."
   }
+
+  assert {
+    condition     = length(aws_cloudwatch_metric_alarm.web_cpu) == 0
+    error_message = "ECS CPU alarms must wait until services exist."
+  }
 }
 
 run "marketplace_identity_is_not_buyer_configurable" {
@@ -279,4 +328,14 @@ run "reject_unproven_region" {
   }
 
   expect_failures = [var.aws_region]
+}
+
+run "reject_fractional_cache_snapshot_retention" {
+  command = plan
+
+  variables {
+    cache_snapshot_retention_days = 0.5
+  }
+
+  expect_failures = [var.cache_snapshot_retention_days]
 }

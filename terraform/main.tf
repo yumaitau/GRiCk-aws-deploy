@@ -39,6 +39,7 @@ locals {
     systemControls = []
     volumesFrom    = []
     linuxParameters = {
+      initProcessEnabled = true
       capabilities = {
         add  = []
         drop = ["ALL"]
