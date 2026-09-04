@@ -158,7 +158,7 @@ variable "web_desired_count" {
 
 variable "worker_desired_count" {
   type        = number
-  description = "Number of worker tasks."
+  description = "BullMQ cron consumer tasks. Keep at least 1; the web task does not run crons."
   default     = 1
 
   validation {
@@ -247,7 +247,7 @@ variable "database_backup_retention_days" {
 
 variable "cache_node_type" {
   type        = string
-  description = "ElastiCache node type."
+  description = "ElastiCache node type for the Redis/BullMQ queue."
   default     = "cache.t4g.micro"
 }
 
@@ -255,6 +255,17 @@ variable "cache_high_availability" {
   type        = bool
   description = "Use a primary and replica with automatic failover. Enable for production."
   default     = false
+}
+
+variable "cache_snapshot_retention_days" {
+  type        = number
+  description = "ElastiCache automated snapshot retention in days. 0 disables snapshots."
+  default     = 1
+
+  validation {
+    condition     = var.cache_snapshot_retention_days >= 0 && var.cache_snapshot_retention_days <= 35 && floor(var.cache_snapshot_retention_days) == var.cache_snapshot_retention_days
+    error_message = "cache_snapshot_retention_days must be a whole number between 0 and 35."
+  }
 }
 
 variable "enable_waf" {
@@ -267,6 +278,12 @@ variable "enable_aws_backup" {
   type        = bool
   description = "Protect RDS through AWS Backup in addition to native retention."
   default     = false
+}
+
+variable "enable_guardduty_malware_protection" {
+  type        = bool
+  description = "Enable GuardDuty Malware Protection for S3 on the evidence prefix and tag scanned objects. Keep enabled in production."
+  default     = true
 }
 
 variable "backup_retention_days" {
@@ -291,6 +308,17 @@ variable "log_retention_days" {
   type        = number
   description = "CloudWatch log retention."
   default     = 30
+}
+
+variable "alarm_notification_email" {
+  type        = string
+  description = "Optional email subscribed to the operations SNS topic. Empty creates the topic without a subscription."
+  default     = ""
+
+  validation {
+    condition     = var.alarm_notification_email == "" || can(regex("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$", var.alarm_notification_email))
+    error_message = "alarm_notification_email must be empty or a valid email address."
+  }
 }
 
 variable "tags" {

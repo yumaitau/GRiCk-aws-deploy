@@ -42,6 +42,36 @@ data "aws_iam_policy_document" "kms" {
       ]
     }
   }
+
+  statement {
+    sid    = "CloudWatchAlarms"
+    effect = "Allow"
+
+    principals {
+      type        = "Service"
+      identifiers = ["cloudwatch.amazonaws.com"]
+    }
+
+    actions = [
+      "kms:Decrypt",
+      "kms:GenerateDataKey*",
+    ]
+    resources = ["*"]
+
+    condition {
+      test     = "StringEquals"
+      variable = "aws:SourceAccount"
+      values   = [data.aws_caller_identity.current.account_id]
+    }
+
+    condition {
+      test     = "ArnLike"
+      variable = "aws:SourceArn"
+      values = [
+        "arn:${data.aws_partition.current.partition}:cloudwatch:${var.aws_region}:${data.aws_caller_identity.current.account_id}:alarm:*",
+      ]
+    }
+  }
 }
 
 resource "aws_kms_key" "this" {
@@ -298,4 +328,3 @@ resource "aws_s3_bucket_logging" "evidence" {
 
   depends_on = [aws_s3_bucket_policy.logs]
 }
-
