@@ -73,6 +73,16 @@ output "evidence_bucket_name" {
   value       = aws_s3_bucket.evidence.id
 }
 
+output "logs_bucket_name" {
+  description = "Private S3 bucket for ALB and evidence access logs."
+  value       = aws_s3_bucket.logs.id
+}
+
+output "alarm_topic_arn" {
+  description = "SNS topic for CloudWatch alarms. Subscribe with alarm_notification_email."
+  value       = aws_sns_topic.alarms.arn
+}
+
 output "guardduty_malware_protection_plan_arn" {
   description = "GuardDuty Malware Protection for S3 plan ARN, or null when explicitly disabled."
   value       = try(aws_guardduty_malware_protection_plan.evidence[0].arn, null)

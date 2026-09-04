@@ -97,6 +97,9 @@ resource "aws_elasticache_replication_group" "this" {
   transit_encryption_enabled = true
   auth_token                 = random_password.cache.result
 
+  snapshot_retention_limit = var.cache_snapshot_retention_days
+  snapshot_window          = var.cache_snapshot_retention_days > 0 ? "16:00-17:00" : null
+
   auto_minor_version_upgrade = true
   apply_immediately          = true
 

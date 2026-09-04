@@ -1,5 +1,7 @@
 # GRiCk on AWS ECS Fargate
 
+AWS Marketplace listing: https://aws.amazon.com/marketplace/pp?sku=8pjp6r3g4mw0nfmf8imsf9z1d
+
 Buyer launch path: clone https://github.com/yumaitau/GRiCk-aws-deploy and start from the repository README. Subscribe at https://aws.amazon.com/marketplace/pp?sku=8pjp6r3g4mw0nfmf8imsf9z1d before `terraform apply`.
 
 Terraform reference stack for a buyer-owned deployment in `ap-southeast-2`:
@@ -10,7 +12,8 @@ Terraform reference stack for a buyer-owned deployment in `ap-southeast-2`:
 - KMS-encrypted, versioned, public-blocked S3 evidence bucket.
 - GuardDuty Malware Protection for S3 on the evidence prefix, with scan-result object tags consumed by GRiCk quarantine controls.
 - Secrets Manager runtime secret, ECS execution role, and least-privilege S3 task role. No AWS access keys enter task definitions.
-- CloudWatch logs and Container Insights, ALB readiness checks, optional WAF, and optional AWS Backup.
+- CloudWatch logs (KMS), Container Insights, VPC flow logs, ALB and S3 access logs, WAF (Anonymous IP / Common / Known Bad Inputs) with WAF logging, and CloudWatch alarms on an SNS topic.
+- Optional AWS Backup. ElastiCache retains one daily snapshot by default.
 
 Amazon EKS buyers use the same Marketplace image via `../charts/grick` and `../charts/grick/values-aws-marketplace.yaml`.
 
@@ -50,7 +53,7 @@ terraform output application_url
 
 `./bootstrap.sh` is optional. It is the two-apply certification helper: services
 off, one-shot migrate + S3 write-proof, services on, `/livez`+`/readyz`, then
-`terraform/evidence/aws-fargate-deploy.md`. Ordinary `terraform apply` is
+`marketplace/evidence/aws-fargate-deploy.md`. Ordinary `terraform apply` is
 enough to launch.
 
 Use `terraform plan` / `terraform apply` for later infrastructure changes. The
@@ -73,9 +76,9 @@ Outputs never contain secret values.
 
 This stack always creates the services GRiCk needs to boot and enables GuardDuty malware protection by default:
 
-- VPC, NAT, ALB, ECS Fargate (web + worker)
+- VPC, NAT, ALB, ECS Fargate (web + worker). Worker is the BullMQ cron consumer; keep `worker_desired_count >= 1`.
 - RDS PostgreSQL 16
-- ElastiCache Redis (TLS; `noeviction` so BullMQ queue keys are not dropped)
+- ElastiCache Redis (TLS; `noeviction` so queue keys are not dropped)
 - KMS-encrypted S3 evidence bucket + S3 gateway endpoint
 - GuardDuty Malware Protection for S3, including its least-privilege service role. Set `enable_guardduty_malware_protection=false` only for a disposable environment where quarantined uploads are intentionally disabled; GuardDuty usage charges and service terms apply when enabled.
 - Secrets Manager, CloudWatch logs
@@ -97,18 +100,21 @@ Amazon EKS buyers do **not** get RDS/Redis/S3 from this module. They provision t
 Test defaults optimise for a short proof run. Production should set:
 
 ```hcl
-app_url                       = "https://grick.example.com"
+app_url                        = "https://grick.example.com"
 certificate_arn                = "arn:aws:acm:ap-southeast-2:...:certificate/..."
 allowed_ingress_cidrs          = ["203.0.113.0/24"]
 allow_internet_ingress         = false
+web_desired_count              = 2
 database_multi_az              = true
 database_deletion_protection   = true
 cache_high_availability        = true
+cache_snapshot_retention_days  = 7
 single_nat_gateway             = false
 enable_aws_backup              = true
 enable_guardduty_malware_protection = true
 force_destroy_backup_vault     = false
 force_destroy_evidence_bucket  = false
+alarm_notification_email       = "ops@example.com"
 ```
 
 `allowed_ingress_cidrs` is required. `0.0.0.0/0` is rejected unless `allow_internet_ingress = true`. Use that flag only for a public site behind WAF and HTTPS.
@@ -123,7 +129,7 @@ ses_from_email = "GRiCk <no-reply@example.com>"
 
 That identity must already be verified in Amazon SES. The stack then sets `EMAIL_PROVIDER=ses` and adds `ses:SendEmail` on the existing task role. SMTP, Paperboy, Resend, or Azure ACS are other `EMAIL_PROVIDER` choices; they are not created by this module.
 
-Configure DNS to the ALB, use a remote state backend, and set a final-snapshot policy appropriate to the buyer. Do not ship `0.0.0.0/0` on the ALB unless `allow_internet_ingress` is an explicit, reviewed decision.
+Configure DNS to the ALB, use a remote state backend, and set a final-snapshot policy appropriate to the buyer. Do not ship `0.0.0.0/0` on the ALB unless `allow_internet_ingress` is an explicit, reviewed decision. Account-level CloudTrail, AWS Config, and a GuardDuty detector stay on the buyer account; this stack does not create them.
 
 ## Destroy
 

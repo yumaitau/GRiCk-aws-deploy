@@ -1,46 +1,55 @@
 aws_region      = "ap-southeast-2"
 name_prefix     = "grick"
-environment     = "prod"
-# Pin to this listing tag or, better, the listing digest from Seller Central.
-# Use 1.0.8 or newer. Images 1.0.1 and 1.0.2 are unsupported. 1.0.5 ESM enforcer is broken. 1.0.6 dies at the 15-minute seat recheckout.
-container_image = "709825985650.dkr.ecr.us-east-1.amazonaws.com/yuma-it/grick-aws:1.0.8"
+environment     = "evidence"
+# Marketplace buyers: pin the listing digest. No GitHub token.
+container_image = "709825985650.dkr.ecr.us-east-1.amazonaws.com/yuma-it/grick-aws@sha256:replace-with-marketplace-digest"
+# Marketplace product identity is baked into 1.0.3+ images. Do not set
+# AWS_MARKETPLACE_* environment variables to disable licensing.
 
-# Marketplace product identity is baked into the 1.0.3+ image.
-# Do not set AWS_MARKETPLACE_* environment variables to disable licensing.
+# Publisher/dev only (private GHCR). Marketplace listings must not require this.
+# container_image = "ghcr.io/yumaitau/grick@sha256:replace-with-multi-arch-digest"
+# container_registry_credentials_secret_arn = "arn:aws:secretsmanager:ap-southeast-2:123456789012:secret:replace-me"
 
 # Required. Office, VPN, or client CIDRs only. 0.0.0.0/0 is rejected unless
 # allow_internet_ingress = true (public service behind WAF + HTTPS).
 allowed_ingress_cidrs  = ["203.0.113.0/24"]
 allow_internet_ingress = false
 
-# First launch can use the generated HTTP ALB URL.
-# Production: ACM certificate in the ALB Region, then set both.
+# Short-lived proof deployment can use the generated HTTP ALB URL.
+# Production must supply both an HTTPS URL and matching ACM certificate.
 # TLS terminates on the ALB. It is not an extra IAM role.
-# app_url         = "https://grick.example.com"
+# app_url        = "https://grick.example.com"
 # certificate_arn = "arn:aws:acm:ap-southeast-2:123456789012:certificate/uuid"
 
 # Optional outbound email. Leave empty until the first admin exists and the
 # SES identity is verified. Empty = working install, no mail.
 # ses_from_email = "GRiCk <no-reply@example.com>"
 
-database_multi_az             = false
-cache_high_availability       = false
-single_nat_gateway            = true
-enable_aws_backup             = false
+# Optional operations alarm destination. Empty still creates the SNS topic.
+# alarm_notification_email = "ops@example.com"
+
+database_multi_az                   = false
+cache_high_availability             = false
+cache_snapshot_retention_days       = 1
+single_nat_gateway                  = true
+enable_aws_backup                   = false
 enable_guardduty_malware_protection = true
-force_destroy_backup_vault    = true
-force_destroy_evidence_bucket = true
+force_destroy_backup_vault          = true
+force_destroy_evidence_bucket       = true
 
 # Production baseline:
 # app_url                        = "https://grick.example.com"
 # certificate_arn                = "arn:aws:acm:ap-southeast-2:...:certificate/..."
 # allow_internet_ingress         = true
 # allowed_ingress_cidrs          = ["0.0.0.0/0"]
+# web_desired_count              = 2
 # database_multi_az              = true
 # database_deletion_protection   = true
 # cache_high_availability        = true
+# cache_snapshot_retention_days  = 7
 # single_nat_gateway             = false
 # enable_aws_backup              = true
 # enable_guardduty_malware_protection = true
 # force_destroy_backup_vault     = false
 # force_destroy_evidence_bucket  = false
+# alarm_notification_email       = "ops@example.com"

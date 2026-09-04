@@ -257,6 +257,17 @@ variable "cache_high_availability" {
   default     = false
 }
 
+variable "cache_snapshot_retention_days" {
+  type        = number
+  description = "ElastiCache automated snapshot retention in days. 0 disables snapshots."
+  default     = 1
+
+  validation {
+    condition     = var.cache_snapshot_retention_days >= 0 && var.cache_snapshot_retention_days <= 35 && floor(var.cache_snapshot_retention_days) == var.cache_snapshot_retention_days
+    error_message = "cache_snapshot_retention_days must be a whole number between 0 and 35."
+  }
+}
+
 variable "enable_waf" {
   type        = bool
   description = "Associate an AWS managed-rule WAFv2 ACL with the ALB."
@@ -297,6 +308,17 @@ variable "log_retention_days" {
   type        = number
   description = "CloudWatch log retention."
   default     = 30
+}
+
+variable "alarm_notification_email" {
+  type        = string
+  description = "Optional email subscribed to the operations SNS topic. Empty creates the topic without a subscription."
+  default     = ""
+
+  validation {
+    condition     = var.alarm_notification_email == "" || can(regex("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$", var.alarm_notification_email))
+    error_message = "alarm_notification_email must be empty or a valid email address."
+  }
 }
 
 variable "tags" {
