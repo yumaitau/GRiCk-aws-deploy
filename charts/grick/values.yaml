@@ -34,6 +34,7 @@ env:
   NEXT_TELEMETRY_DISABLED: "1"
   NEXT_PUBLIC_APP_URL: https://grick.example.com
   BETTER_AUTH_URL: https://grick.example.com
+  CRON_TIMEZONE: Australia/Sydney
   PORT: "3000"
   S3_FORCE_PATH_STYLE: "false"
   # The containers run with a read-only root filesystem, so npm must keep its
@@ -79,6 +80,7 @@ web:
 worker:
   enabled: true
   replicaCount: 1
+  # Separate process: BullMQ consumer. Web does not run cron jobs.
   # args (not command): Kubernetes command replaces image ENTRYPOINT.
   # Image entrypoint waits for Postgres and migrates before exec.
   args:
@@ -130,7 +132,7 @@ postgresql:
 redis:
   external:
     recommended: true
-    note: Use managed Redis or Valkey in production and provide REDIS_URL/VALKEY_URL through secretEnv or existingSecret.
+    note: Use managed Redis or Valkey in production (ElastiCache must set maxmemory-policy=noeviction) and provide REDIS_URL/VALKEY_URL. The worker deployment is the only BullMQ cron consumer.
 
 nodeSelector: {}
 tolerations: []

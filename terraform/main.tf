@@ -32,10 +32,16 @@ locals {
   # Known at plan time so terraform test can assert these without decoding
   # container_definitions (that JSON includes computed secret ARNs and URLs).
   container_hardening = {
-    user       = "nextjs"
-    privileged = false
+    user           = "nextjs"
+    privileged     = false
+    mountPoints    = []
+    portMappings   = []
+    systemControls = []
+    volumesFrom    = []
     linuxParameters = {
+      initProcessEnabled = true
       capabilities = {
+        add  = []
         drop = ["ALL"]
       }
     }
@@ -56,8 +62,11 @@ locals {
     { name = "EVIDENCE_STORAGE_PROVIDER", value = "s3" },
     { name = "EVIDENCE_S3_BUCKET", value = aws_s3_bucket.evidence.id },
     { name = "EVIDENCE_S3_REGION", value = var.aws_region },
+    { name = "EVIDENCE_MALWARE_SCAN_MODE", value = var.enable_guardduty_malware_protection ? "storage" : "off" },
     { name = "AWS_REGION", value = var.aws_region },
+    { name = "AWS_KMS_KEY_ARN", value = aws_kms_key.this.arn },
     { name = "GRICK_VALIDATE_RUNTIME_CONFIG", value = "true" },
+    { name = "CRON_TIMEZONE", value = "Australia/Sydney" },
     { name = "ALLOW_INSECURE_PUBLIC_URL", value = var.certificate_arn == null ? "true" : "false" },
     # First account may self-register and create the organisation. Switch both
     # to invite_only after bootstrap if the buyer wants to block public sign-up.

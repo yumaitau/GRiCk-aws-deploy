@@ -64,13 +64,38 @@ output "database_endpoint" {
 }
 
 output "cache_endpoint" {
-  description = "Private TLS Redis endpoint."
+  description = "Private TLS Redis/BullMQ primary endpoint."
   value       = "${aws_elasticache_replication_group.this.primary_endpoint_address}:6379"
 }
 
 output "evidence_bucket_name" {
   description = "Private KMS-encrypted S3 evidence bucket."
   value       = aws_s3_bucket.evidence.id
+}
+
+output "logs_bucket_name" {
+  description = "Private S3 bucket for ALB and evidence access logs."
+  value       = aws_s3_bucket.logs.id
+}
+
+output "alarm_topic_arn" {
+  description = "SNS topic for CloudWatch alarms. Subscribe with alarm_notification_email."
+  value       = aws_sns_topic.alarms.arn
+}
+
+output "guardduty_malware_protection_plan_arn" {
+  description = "GuardDuty Malware Protection for S3 plan ARN, or null when explicitly disabled."
+  value       = try(aws_guardduty_malware_protection_plan.evidence[0].arn, null)
+}
+
+output "guardduty_malware_protection_status" {
+  description = "GuardDuty Malware Protection for S3 plan status, or DISABLED when explicitly disabled."
+  value       = try(aws_guardduty_malware_protection_plan.evidence[0].status, "DISABLED")
+}
+
+output "kms_key_arn" {
+  description = "KMS key used by the ECS workload for evidence and CMK envelope operations."
+  value       = aws_kms_key.this.arn
 }
 
 output "runtime_secret_arn" {
