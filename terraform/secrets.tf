@@ -20,7 +20,7 @@ resource "random_password" "server_actions" {
 
 resource "aws_secretsmanager_secret" "runtime" {
   name_prefix             = "${local.name}-runtime-"
-  description             = "GRiCk runtime connection strings and application secrets"
+  description             = "GRiCk runtime connection strings, Redis/BullMQ URL, and application secrets"
   kms_key_id              = aws_kms_key.this.arn
   recovery_window_in_days = 0
 }

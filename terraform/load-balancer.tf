@@ -7,7 +7,7 @@ resource "aws_lb" "web" {
   subnets            = aws_subnet.public[*].id
 
   drop_invalid_header_fields = true
-  enable_deletion_protection = false
+  enable_deletion_protection = var.database_deletion_protection
 
   access_logs {
     bucket  = aws_s3_bucket.logs.id
@@ -82,4 +82,3 @@ resource "aws_lb_listener" "https" {
     target_group_arn = aws_lb_target_group.web.arn
   }
 }
-

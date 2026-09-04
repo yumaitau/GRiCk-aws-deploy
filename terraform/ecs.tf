@@ -44,7 +44,8 @@ resource "aws_ecs_task_definition" "web" {
       name      = "web"
       image     = var.container_image
       essential = true
-      command   = ["node", "server.js"]
+      # HTTP only. Cron jobs enqueue on Redis and run in the worker task.
+      command = ["node", "server.js"]
       portMappings = [
         {
           name          = "http"
@@ -101,9 +102,10 @@ resource "aws_ecs_task_definition" "worker" {
 
   container_definitions = jsonencode([
     merge(local.container_hardening, {
-      name        = "worker"
-      image       = var.container_image
-      essential   = true
+      name      = "worker"
+      image     = var.container_image
+      essential = true
+      # Separate process: BullMQ consumer for scheduled jobs on ElastiCache.
       command     = ["node", "dist/worker.cjs"]
       environment = concat(local.common_environment, local.ses_environment, local.marketplace_environment)
       secrets     = local.common_secrets
