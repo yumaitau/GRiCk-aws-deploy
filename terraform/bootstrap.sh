@@ -2,11 +2,7 @@
 set -euo pipefail
 
 script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
-if [[ -d "${script_dir}/../../../marketplace" ]]; then
-  evidence_file="${script_dir}/../../../marketplace/evidence/aws-fargate-deploy.md"
-else
-  evidence_file="${script_dir}/evidence/aws-fargate-deploy.md"
-fi
+evidence_file="${script_dir}/../marketplace/evidence/aws-fargate-deploy.md"
 terraform_args=("$@")
 
 for command in terraform aws jq curl; do

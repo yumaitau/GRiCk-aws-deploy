@@ -208,4 +208,3 @@ resource "aws_flow_log" "this" {
   log_destination_type = "cloud-watch-logs"
   log_destination      = aws_cloudwatch_log_group.vpc_flow.arn
 }
-
