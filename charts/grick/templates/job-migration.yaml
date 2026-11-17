@@ -2,7 +2,14 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
+  {{- if .Values.migration.asHelmHook }}
   name: {{ include "grick.fullname" . }}-migration
+  {{- else }}
+  {{- /* A Job's pod template is immutable. Naming the Job after the release revision
+  gives each install or upgrade a new Job (Helm removes the previous one), so an
+  image change never patches an existing Job. */}}
+  name: {{ include "grick.fullname" . }}-migration-{{ .Release.Revision }}
+  {{- end }}
   labels:
     {{- include "grick.labels" . | nindent 4 }}
     app.kubernetes.io/component: migration
@@ -19,6 +26,8 @@ spec:
       labels:
         {{- include "grick.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: migration
+      annotations:
+        {{- include "grick.podAnnotations" . | nindent 8 }}
     spec:
       restartPolicy: Never
       serviceAccountName: {{ include "grick.serviceAccountName" . }}
@@ -34,7 +43,7 @@ spec:
       {{- end }}
       containers:
         - name: migration
-          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           {{- with .Values.migration.command }}
           command:

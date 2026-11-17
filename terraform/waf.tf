@@ -44,6 +44,17 @@ resource "aws_wafv2_web_acl" "this" {
       managed_rule_group_statement {
         name        = "AWSManagedRulesCommonRuleSet"
         vendor_name = "AWS"
+
+        # SizeRestrictions_BODY blocks any body over 8 KB, which rejects evidence,
+        # import and policy uploads posted through the ALB. WAF on an ALB inspects
+        # only the first 8 KB of a body, so it cannot enforce the 25 MiB upload cap;
+        # the app refuses larger declared bodies with 413 (proxy.ts).
+        rule_action_override {
+          name = "SizeRestrictions_BODY"
+          action_to_use {
+            count {}
+          }
+        }
       }
     }
 
@@ -143,6 +154,22 @@ resource "aws_wafv2_web_acl_logging_configuration" "this" {
 
   resource_arn            = aws_wafv2_web_acl.this[0].arn
   log_destination_configs = [aws_cloudwatch_log_group.waf[0].arn]
+
+  redacted_fields {
+    single_header {
+      name = "authorization"
+    }
+  }
+  redacted_fields {
+    single_header {
+      name = "cookie"
+    }
+  }
+  redacted_fields {
+    single_header {
+      name = "x-api-key"
+    }
+  }
 
   depends_on = [aws_cloudwatch_log_resource_policy.waf]
 }

@@ -1,19 +1,12 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Description: >
-  GRiCk on ECS Fargate. Buyer-owned VPC, ALB, RDS PostgreSQL 16, ElastiCache Redis,
-  KMS, Secrets Manager, and a private S3 evidence bucket. ALB ingress CIDR is required;
-  0.0.0.0/0 needs AllowInternetIngress. Subscribe on AWS Marketplace before creating
-  this stack. Parity target is first-launch Terraform defaults (single NAT). Dual-NAT
-  production egress stays on the Terraform stack.
+  GRiCk on ECS Fargate. Buyer-owned VPC, ALB, RDS PostgreSQL 16, ElastiCache Redis
+  (BullMQ job queue), KMS, Secrets Manager, and a private S3 evidence bucket.
+  Web serves HTTP until a certificate is supplied, then port 80 redirects to HTTPS.
+  The worker task is the only cron consumer. Subscribe on AWS Marketplace before creating this stack. Parity target is deploy/terraform/aws-fargate
+  first-launch defaults (single NAT). Dual-NAT production egress stays on the Terraform stack.
 
 Metadata:
-  AWSToolsMetrics:
-    AWSAgentToolkit: aws-cloudformation@2
-  com.aws.cloudformation.Context:
-    must:
-      - ALB SG ingress never 0.0.0.0/0 unless AllowInternetIngress
-    ref:
-      - { at: cloudformation/README.md, has: launch + ingress, scope: companion }
   AWS::CloudFormation::Interface:
     ParameterGroups:
       - Label:
@@ -23,7 +16,6 @@ Metadata:
           - MarketplaceProductCode
           - MarketplaceProductSku
           - MarketplacePublicKeyVersion
-          - MarketplaceEnforceContainerLicense
       - Label:
           default: Names
         Parameters:
@@ -41,11 +33,17 @@ Metadata:
           - CertificateArn
           - AppUrl
           - SesFromEmail
+          - EnableBedrock
+      - Label:
+          default: Access
+        Parameters:
+          - SignupMode
       - Label:
           default: Data plane
         Parameters:
           - DatabaseInstanceClass
           - DatabaseMultiAz
+          - DatabaseDeletionProtection
           - CacheNodeType
           - CacheHighAvailability
           - EnableWaf
@@ -58,8 +56,6 @@ Metadata:
         default: Listing product code
       MarketplaceProductSku:
         default: Listing product ID (SKU)
-      MarketplaceEnforceContainerLicense:
-        default: Deprecated — ignored by 1.0.3+
       CertificateArn:
         default: ACM certificate ARN (HTTPS)
       SesFromEmail:
@@ -80,33 +76,26 @@ Parameters:
 
   ContainerImage:
     Type: String
-    Default: "709825985650.dkr.ecr.us-east-1.amazonaws.com/yuma-it/grick-aws:1.0.8"
+    # Keep in step with marketplace/aws/current-image.txt (tests enforce it).
+    Default: "709825985650.dkr.ecr.us-east-1.amazonaws.com/yuma-it/grick-aws:2.1.0"
     AllowedPattern: ".*(@sha256:[0-9a-f]{64}|:[A-Za-z0-9][A-Za-z0-9_.-]{0,127})$"
     Description: Marketplace ECR image tag or digest. Do not use :latest.
 
   MarketplaceProductCode:
     Type: String
     Default: ""
-    Description: Deprecated and ignored. GRiCk 1.0.3+ embeds Marketplace product identity in the image.
+    Description: AWS Marketplace product code. Required for subscribed tasks (CheckoutLicense).
 
   MarketplaceProductSku:
     Type: String
     Default: ""
-    Description: Deprecated and ignored. GRiCk 1.0.3+ embeds the License Manager ProductSKU in the image.
+    Description: AWS Marketplace product ID used as License Manager ProductSKU.
 
   MarketplacePublicKeyVersion:
     Type: Number
     Default: 1
     MinValue: 1
-    Description: Deprecated and ignored. Hourly RegisterUsage is not used by the public contract listing.
-
-  MarketplaceEnforceContainerLicense:
-    Type: String
-    Default: "false"
-    AllowedValues:
-      - "true"
-      - "false"
-    Description: Deprecated and ignored. Marketplace images 1.0.3+ always enforce CheckoutLicense.
+    Description: PublicKeyVersion from Seller Central.
 
   VpcCidr:
     Type: String
@@ -116,15 +105,15 @@ Parameters:
 
   AllowedIngressCidr:
     Type: String
-    AllowedPattern: "^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(\\/([0-9]|[1-2][0-9]|3[0-2]))$"
-    ConstraintDescription: IPv4 CIDR (for example 203.0.113.0/24). 0.0.0.0/0 requires AllowInternetIngress=true.
-    Description: IPv4 CIDR allowed to reach the ALB. Required. 0.0.0.0/0 is rejected unless AllowInternetIngress is true.
+    AllowedPattern: "^((([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\\/([1-9]|[12][0-9]|3[0-2])|0\\.0\\.0\\.0\\/0)$"
+    ConstraintDescription: Must be an IPv4 CIDR such as 203.0.113.0/24. The only /0 accepted is 0.0.0.0/0, which also needs AllowInternetIngress=true.
+    Description: Required. Office, VPN or client IPv4 CIDR allowed to reach the ALB. 0.0.0.0/0 needs AllowInternetIngress=true.
 
   AllowInternetIngress:
     Type: String
     Default: "false"
     AllowedValues: ["true", "false"]
-    Description: Permit 0.0.0.0/0 on the ALB. Off by default. Use only for a public service behind WAF and HTTPS.
+    Description: Set true only for a public service (behind WAF and HTTPS) to allow AllowedIngressCidr 0.0.0.0/0.
 
   CertificateArn:
     Type: String
@@ -135,11 +124,21 @@ Parameters:
     Type: String
     Default: ""
     Description: Canonical public URL (https://hostname). Empty uses the ALB URL.
+    AllowedPattern: ^(https?://[^/\s]+)?$
+    ConstraintDescription: Must be an origin such as https://grick.example.com, without a path or trailing slash.
 
   SesFromEmail:
     Type: String
     Default: ""
     Description: Verified Amazon SES From identity. Empty disables outbound email.
+
+  SignupMode:
+    Type: String
+    Default: invite_only
+    AllowedValues:
+      - invite_only
+      - open
+    Description: invite_only still admits the first account at /sign-up, then requires an invitation. Use open only for a deliberate public service.
 
   DatabaseInstanceClass:
     Type: String
@@ -151,6 +150,12 @@ Parameters:
     Default: "false"
     AllowedValues: ["true", "false"]
     Description: Multi-AZ RDS. Enable for production.
+
+  DatabaseDeletionProtection:
+    Type: String
+    Default: "false"
+    AllowedValues: ["true", "false"]
+    Description: Turn on RDS and ALB deletion protection. Enable for production; set false before an intentional stack delete.
 
   CacheNodeType:
     Type: String
@@ -175,6 +180,12 @@ Parameters:
     AllowedValues: ["true", "false"]
     Description: Protect RDS and the evidence bucket with AWS Backup.
 
+  EnableBedrock:
+    Type: String
+    Default: "true"
+    AllowedValues: ["true", "false"]
+    Description: Grant the task role bedrock:InvokeModel on Anthropic Claude models for the in-account AI assistant. Set false to omit the grant; onboarding then defaults AI to off.
+
   EnableGuardDutyMalwareProtection:
     Type: String
     Default: "true"
@@ -198,6 +209,13 @@ Parameters:
     Default: 30
     Description: CloudWatch log retention.
 
+Rules:
+  NoWorldIngressUnlessAllowed:
+    RuleCondition: !Equals [!Ref AllowInternetIngress, "false"]
+    Assertions:
+      - Assert: !Not [!Equals [!Ref AllowedIngressCidr, "0.0.0.0/0"]]
+        AssertDescription: AllowedIngressCidr 0.0.0.0/0 requires AllowInternetIngress=true.
+
 Conditions:
   HasCertificate: !Not [!Equals [!Ref CertificateArn, ""]]
   HasAppUrl: !Not [!Equals [!Ref AppUrl, ""]]
@@ -210,18 +228,18 @@ Conditions:
   CacheIsHa: !Equals [!Ref CacheHighAvailability, "true"]
   WafEnabled: !Equals [!Ref EnableWaf, "true"]
   BackupEnabled: !Equals [!Ref EnableAwsBackup, "true"]
+  DatabaseIsProtected: !Equals [!Ref DatabaseDeletionProtection, "true"]
   GuardDutyMalwareEnabled: !Equals [!Ref EnableGuardDutyMalwareProtection, "true"]
-
-Rules:
-  NoWorldOpenIngress:
-    RuleCondition: !Equals [!Ref AllowInternetIngress, "false"]
-    Assertions:
-      - Assert: !Not [!Equals [!Ref AllowedIngressCidr, "0.0.0.0/0"]]
-        AssertDescription: AllowedIngressCidr cannot be 0.0.0.0/0 unless AllowInternetIngress is true.
+  BedrockEnabled: !Equals [!Ref EnableBedrock, "true"]
 
 Resources:
   EncryptionKey:
     Type: AWS::KMS::Key
+    # The final RDS snapshot (Database DeletionPolicy: Snapshot) and any AWS Backup
+    # recovery points are encrypted with this key and cannot be restored without it,
+    # so it outlives the stack. Schedule its deletion only after removing them.
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
       Description: !Sub "GRiCk ${Environment} data encryption"
       EnableKeyRotation: true
@@ -461,7 +479,14 @@ Resources:
         - Key: Name
           Value: !Sub ${NamePrefix}-${Environment}-s3
 
-  FlowLogsRole:
+  VpcFlowLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /vpc/${NamePrefix}-${Environment}/flow-logs
+      RetentionInDays: !Ref LogRetentionDays
+      KmsKeyId: !GetAtt EncryptionKey.Arn
+
+  VpcFlowLogRole:
     Type: AWS::IAM::Role
     Properties:
       AssumeRolePolicyDocument:
@@ -483,18 +508,11 @@ Resources:
                 Action:
                   - logs:CreateLogStream
                   - logs:PutLogEvents
-                  - logs:DescribeLogGroups
                   - logs:DescribeLogStreams
-                Resource:
-                  - !GetAtt FlowLogsGroup.Arn
-                  - !Sub ${FlowLogsGroup.Arn}:*
-
-  FlowLogsGroup:
-    Type: AWS::Logs::LogGroup
-    Properties:
-      LogGroupName: !Sub /vpc/${NamePrefix}-${Environment}/flow-logs
-      RetentionInDays: !Ref LogRetentionDays
-      KmsKeyId: !GetAtt EncryptionKey.Arn
+                Resource: !GetAtt VpcFlowLogGroup.Arn
+              - Effect: Allow
+                Action: logs:DescribeLogGroups
+                Resource: "*"
 
   VpcFlowLog:
     Type: AWS::EC2::FlowLog
@@ -502,9 +520,9 @@ Resources:
       ResourceId: !Ref Vpc
       ResourceType: VPC
       TrafficType: ALL
-      DeliverLogsPermissionArn: !GetAtt FlowLogsRole.Arn
       LogDestinationType: cloud-watch-logs
-      LogGroupName: !Ref FlowLogsGroup
+      LogGroupName: !Ref VpcFlowLogGroup
+      DeliverLogsPermissionArn: !GetAtt VpcFlowLogRole.Arn
 
   AlbSecurityGroup:
     Type: AWS::EC2::SecurityGroup
@@ -542,7 +560,6 @@ Resources:
         - Key: Name
           Value: !Sub ${NamePrefix}-${Environment}-cache
 
-  # ALB SG only — not shared with tasks, RDS, or Redis.
   AlbHttpIngress:
     Type: AWS::EC2::SecurityGroupIngress
     Properties:
@@ -654,77 +671,13 @@ Resources:
       ToPort: 6379
       SourceSecurityGroupId: !Ref TaskSecurityGroup
 
-  LogsBucket:
-    Type: AWS::S3::Bucket
-    Metadata:
-      checkov:
-        skip:
-          - id: CKV_AWS_18
-            comment: Access-log destination cannot log to itself
-    Properties:
-      BucketEncryption:
-        ServerSideEncryptionConfiguration:
-          - ServerSideEncryptionByDefault:
-              SSEAlgorithm: AES256
-      PublicAccessBlockConfiguration:
-        BlockPublicAcls: true
-        BlockPublicPolicy: true
-        IgnorePublicAcls: true
-        RestrictPublicBuckets: true
-      OwnershipControls:
-        Rules:
-          - ObjectOwnership: BucketOwnerEnforced
-      VersioningConfiguration:
-        Status: Enabled
-      LifecycleConfiguration:
-        Rules:
-          - Id: expire-access-logs
-            Status: Enabled
-            ExpirationInDays: 90
-            NoncurrentVersionExpirationInDays: 30
-            AbortIncompleteMultipartUpload:
-              DaysAfterInitiation: 7
-
-  LogsBucketPolicy:
-    Type: AWS::S3::BucketPolicy
-    Properties:
-      Bucket: !Ref LogsBucket
-      PolicyDocument:
-        Version: "2012-10-17"
-        Statement:
-          - Sid: DenyInsecureTransport
-            Effect: Deny
-            Principal: "*"
-            Action: s3:*
-            Resource:
-              - !GetAtt LogsBucket.Arn
-              - !Sub ${LogsBucket.Arn}/*
-            Condition:
-              Bool:
-                aws:SecureTransport: "false"
-          - Sid: AlbAccessLogs
-            Effect: Allow
-            Principal:
-              Service: logdelivery.elasticloadbalancing.amazonaws.com
-            Action: s3:PutObject
-            Resource: !Sub ${LogsBucket.Arn}/alb/AWSLogs/${AWS::AccountId}/*
-            Condition:
-              StringEquals:
-                aws:SourceAccount: !Ref AWS::AccountId
-          - Sid: S3AccessLogs
-            Effect: Allow
-            Principal:
-              Service: logging.s3.amazonaws.com
-            Action: s3:PutObject
-            Resource: !Sub ${LogsBucket.Arn}/s3/evidence/*
-            Condition:
-              StringEquals:
-                aws:SourceAccount: !Ref AWS::AccountId
-
   EvidenceBucket:
     Type: AWS::S3::Bucket
     DependsOn: LogsBucketPolicy
     Properties:
+      LoggingConfiguration:
+        DestinationBucketName: !Ref LogsBucket
+        LogFilePrefix: s3/evidence/
       BucketEncryption:
         ServerSideEncryptionConfiguration:
           - ServerSideEncryptionByDefault:
@@ -741,16 +694,33 @@ Resources:
           - ObjectOwnership: BucketOwnerEnforced
       VersioningConfiguration:
         Status: Enabled
-      LoggingConfiguration:
-        DestinationBucketName: !Ref LogsBucket
-        LogFilePrefix: s3/evidence/
+      # Lets the browser POST attachments straight to the bucket under a signed policy
+      # (ATTACHMENT_DIRECT_UPLOADS). Nothing is readable cross-origin.
+      CorsConfiguration:
+        CorsRules:
+          - AllowedMethods:
+              - POST
+            AllowedOrigins:
+              - !If
+                - HasAppUrl
+                - !Ref AppUrl
+                - !Sub
+                  - "${Scheme}://${Dns}"
+                  - Scheme: !If [HasCertificate, https, http]
+                    Dns: !GetAtt LoadBalancer.DNSName
+            AllowedHeaders:
+              - "*"
+            MaxAge: 3000
+      # Browser uploads land under _pending-uploads/ first; the app moves confirmed ones
+      # into place, so anything left there was abandoned.
       LifecycleConfiguration:
         Rules:
-          - Id: evidence-maintenance
+          - Id: expire-pending-uploads
             Status: Enabled
-            AbortIncompleteMultipartUpload:
-              DaysAfterInitiation: 7
-            NoncurrentVersionExpirationInDays: 90
+            Prefix: ato-evidence/_pending-uploads/
+            ExpirationInDays: 1
+            NoncurrentVersionExpiration:
+              NoncurrentDays: 1
       Tags:
         - Key: Application
           Value: GRiCk
@@ -923,6 +893,31 @@ Resources:
         PasswordLength: 48
         ExcludePunctuation: true
 
+  # Dedicated key for webhook signing secrets and connector credentials (#681). Never derived
+  # from the auth secrets, so rotating them leaves stored secrets readable.
+  WorkflowWebhookEncryptionSecret:
+    Type: AWS::SecretsManager::Secret
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      Description: GRiCk WORKFLOW_WEBHOOK_ENCRYPTION_KEY
+      KmsKeyId: !Ref EncryptionKey
+      GenerateSecretString:
+        PasswordLength: 48
+        ExcludePunctuation: true
+
+  # Assurance bundle integrity seal key (#547): its own value, never the auth secret.
+  CertificationSigningSecret:
+    Type: AWS::SecretsManager::Secret
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      Description: GRiCk CERTIFICATION_SIGNING_SECRET
+      KmsKeyId: !Ref EncryptionKey
+      GenerateSecretString:
+        PasswordLength: 48
+        ExcludePunctuation: true
+
   ServerActionsSecret:
     Type: AWS::SecretsManager::Secret
     DeletionPolicy: Delete
@@ -930,9 +925,16 @@ Resources:
     Properties:
       Description: GRiCk NEXT_SERVER_ACTIONS_ENCRYPTION_KEY
       KmsKeyId: !Ref EncryptionKey
+      # Next decodes this key with atob and imports it as a raw AES-GCM key
+      # (16, 24 or 32 bytes). GenerateSecretString cannot emit random bytes, so
+      # generate 32 alphanumeric characters and use them as base64 text: every
+      # character is in the base64 alphabet and 32 characters decode to 24
+      # bytes, a valid AES-192 key. Do not change the length or allow
+      # punctuation without re-checking the decoded size.
       GenerateSecretString:
-        PasswordLength: 48
+        PasswordLength: 32
         ExcludePunctuation: true
+        IncludeSpace: false
 
   DatabaseSubnetGroup:
     Type: AWS::RDS::DBSubnetGroup
@@ -947,8 +949,10 @@ Resources:
 
   Database:
     Type: AWS::RDS::DBInstance
-    DeletionPolicy: Delete
-    UpdateReplacePolicy: Delete
+    # Deleting the stack, or a change that replaces the instance, takes a final snapshot first
+    # (as Terraform's final_snapshot_identifier does), so evidence and audit data survive.
+    DeletionPolicy: Snapshot
+    UpdateReplacePolicy: Snapshot
     Properties:
       DBInstanceIdentifier: !Sub ${NamePrefix}-${Environment}-postgres
       Engine: postgres
@@ -971,7 +975,8 @@ Resources:
       BackupRetentionPeriod: 7
       CopyTagsToSnapshot: true
       AutoMinorVersionUpgrade: true
-      DeletionProtection: false
+      # trivy:ignore:AVD-AWS-0177 Deletion protection is the DatabaseDeletionProtection parameter; enable it for production
+      DeletionProtection: !If [DatabaseIsProtected, true, false]
       EnableCloudwatchLogsExports:
         - postgresql
         - upgrade
@@ -1036,6 +1041,8 @@ Resources:
           "BETTER_AUTH_SECRET": "{{resolve:secretsmanager:${BetterAuthSecret}:SecretString}}",
           "AUTH_SECRET": "{{resolve:secretsmanager:${AuthSecret}:SecretString}}",
           "APP_SECRET": "{{resolve:secretsmanager:${AppSecret}:SecretString}}",
+          "WORKFLOW_WEBHOOK_ENCRYPTION_KEY": "{{resolve:secretsmanager:${WorkflowWebhookEncryptionSecret}:SecretString}}",
+          "CERTIFICATION_SIGNING_SECRET": "{{resolve:secretsmanager:${CertificationSigningSecret}:SecretString}}",
           "NEXT_SERVER_ACTIONS_ENCRYPTION_KEY": "{{resolve:secretsmanager:${ServerActionsSecret}:SecretString}}"
         }
 
@@ -1138,6 +1145,28 @@ Resources:
               - ses:SendRawEmail
             Resource: !Sub arn:${AWS::Partition}:ses:${AWS::Region}:${AWS::AccountId}:identity/*
 
+  # Amazon Bedrock for the in-account AI assistant (onboarding default). Cross-
+  # Region inference profiles route to foundation models in other Regions, so
+  # the model ARN uses a Region wildcard.
+  TaskBedrockPolicy:
+    Type: AWS::IAM::Policy
+    Condition: BedrockEnabled
+    Properties:
+      PolicyName: amazon-bedrock-invoke
+      Roles:
+        - !Ref TaskRole
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: InvokeBedrockClaude
+            Effect: Allow
+            Action:
+              - bedrock:InvokeModel
+              - bedrock:InvokeModelWithResponseStream
+            Resource:
+              - !Sub arn:${AWS::Partition}:bedrock:*::foundation-model/anthropic.*
+              - !Sub arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/*
+
   TaskMarketplacePolicy:
     Type: AWS::IAM::Policy
     Properties:
@@ -1186,6 +1215,80 @@ Resources:
       RetentionInDays: !Ref LogRetentionDays
       KmsKeyId: !GetAtt EncryptionKey.Arn
 
+  # ALB access logs. ALB log delivery supports SSE-S3 only, not SSE-KMS.
+  # Retained on stack delete so request history survives teardown.
+  # trivy:ignore:AVD-AWS-0132 ALB access log delivery supports SSE-S3 only, not a customer managed key
+  # trivy:ignore:AVD-AWS-0089 Access-log destination cannot log to itself
+  LogsBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Metadata:
+      checkov:
+        skip:
+          - id: CKV_AWS_18
+            comment: Access-log destination cannot log to itself
+    Properties:
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerEnforced
+      VersioningConfiguration:
+        Status: Enabled
+      LifecycleConfiguration:
+        Rules:
+          - Id: expire-access-logs
+            Status: Enabled
+            ExpirationInDays: 90
+            NoncurrentVersionExpiration:
+              NoncurrentDays: 30
+            AbortIncompleteMultipartUpload:
+              DaysAfterInitiation: 7
+
+  LogsBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref LogsBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: DenyInsecureTransport
+            Effect: Deny
+            Principal: "*"
+            Action: s3:*
+            Resource:
+              - !GetAtt LogsBucket.Arn
+              - !Sub ${LogsBucket.Arn}/*
+            Condition:
+              Bool:
+                aws:SecureTransport: "false"
+          - Sid: AlbAccessLogs
+            Effect: Allow
+            Principal:
+              Service: logdelivery.elasticloadbalancing.amazonaws.com
+            Action: s3:PutObject
+            Resource: !Sub ${LogsBucket.Arn}/alb/AWSLogs/${AWS::AccountId}/*
+            Condition:
+              ArnLike:
+                aws:SourceArn: !Sub arn:${AWS::Partition}:elasticloadbalancing:${AWS::Region}:${AWS::AccountId}:loadbalancer/*
+          - Sid: S3AccessLogs
+            Effect: Allow
+            Principal:
+              Service: logging.s3.amazonaws.com
+            Action: s3:PutObject
+            Resource: !Sub ${LogsBucket.Arn}/s3/evidence/*
+            Condition:
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+
   LoadBalancer:
     Type: AWS::ElasticLoadBalancingV2::LoadBalancer
     DependsOn: LogsBucketPolicy
@@ -1200,6 +1303,8 @@ Resources:
       LoadBalancerAttributes:
         - Key: routing.http.drop_invalid_header_fields.enabled
           Value: "true"
+        - Key: deletion_protection.enabled
+          Value: !If [DatabaseIsProtected, "true", "false"]
         - Key: access_logs.s3.enabled
           Value: "true"
         - Key: access_logs.s3.bucket
@@ -1235,18 +1340,15 @@ Resources:
       LoadBalancerArn: !Ref LoadBalancer
       Port: 80
       Protocol: HTTP
-      DefaultActions:
-        - !If
-          - HasCertificate
-          - Type: redirect
+      # With a certificate, port 80 only redirects so sign-in never stays on cleartext.
+      DefaultActions: !If
+        - HasCertificate
+        - - Type: redirect
             RedirectConfig:
-              Host: "#{host}"
-              Path: "/#{path}"
-              Port: "443"
               Protocol: HTTPS
-              Query: "#{query}"
+              Port: "443"
               StatusCode: HTTP_301
-          - Type: forward
+        - - Type: forward
             TargetGroupArn: !Ref TargetGroup
 
   HttpsListener:
@@ -1297,6 +1399,14 @@ Resources:
             ManagedRuleGroupStatement:
               Name: AWSManagedRulesCommonRuleSet
               VendorName: AWS
+              # SizeRestrictions_BODY blocks any body over 8 KB, which rejects
+              # evidence, import and policy uploads posted through the ALB. WAF on
+              # an ALB inspects only the first 8 KB of a body, so the app refuses
+              # larger declared bodies with 413 instead (proxy.ts).
+              RuleActionOverrides:
+                - Name: SizeRestrictions_BODY
+                  ActionToUse:
+                    Count: {}
           VisibilityConfig:
             CloudWatchMetricsEnabled: true
             MetricName: !Sub ${NamePrefix}-${Environment}-common
@@ -1326,6 +1436,7 @@ Resources:
     Type: AWS::Logs::LogGroup
     Condition: WafEnabled
     Properties:
+      # WAF requires the aws-waf-logs- name prefix.
       LogGroupName: !Sub aws-waf-logs-${NamePrefix}-${Environment}
       RetentionInDays: !Ref LogRetentionDays
       KmsKeyId: !GetAtt EncryptionKey.Arn
@@ -1335,29 +1446,25 @@ Resources:
     Condition: WafEnabled
     Properties:
       PolicyName: !Sub ${NamePrefix}-${Environment}-waf-logs
-      PolicyDocument: !Sub |
-        {
-          "Version": "2012-10-17",
-          "Statement": [{
-            "Effect": "Allow",
-            "Principal": {"Service": "delivery.logs.amazonaws.com"},
-            "Action": ["logs:CreateLogStream", "logs:PutLogEvents"],
-            "Resource": "${WafLogGroup.Arn}:*",
-            "Condition": {
-              "StringEquals": {"aws:SourceAccount": "${AWS::AccountId}"},
-              "ArnLike": {"aws:SourceArn": "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:*"}
-            }
-          }]
-        }
+      PolicyDocument: !Sub >-
+        {"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"Service":"delivery.logs.amazonaws.com"},"Action":["logs:CreateLogStream","logs:PutLogEvents"],"Resource":"${WafLogGroup.Arn}","Condition":{"StringEquals":{"aws:SourceAccount":"${AWS::AccountId}"},"ArnLike":{"aws:SourceArn":"arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:*"}}}]}
 
-  WebAclLogging:
+  WafLoggingConfiguration:
     Type: AWS::WAFv2::LoggingConfiguration
     Condition: WafEnabled
     DependsOn: WafLogResourcePolicy
     Properties:
       ResourceArn: !GetAtt WebAcl.Arn
+      # WAF wants the log group ARN without the trailing :* that GetAtt returns.
       LogDestinationConfigs:
-        - !GetAtt WafLogGroup.Arn
+        - !Sub arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:${WafLogGroup}
+      RedactedFields:
+        - SingleHeader:
+            Name: authorization
+        - SingleHeader:
+            Name: cookie
+        - SingleHeader:
+            Name: x-api-key
 
   WebTaskDefinition:
     Type: AWS::ECS::TaskDefinition
@@ -1380,6 +1487,7 @@ Resources:
           User: nextjs
           Privileged: false
           LinuxParameters:
+            InitProcessEnabled: true
             Capabilities:
               Drop:
                 - ALL
@@ -1423,6 +1531,8 @@ Resources:
               Value: !Ref AWS::Region
             - Name: EVIDENCE_MALWARE_SCAN_MODE
               Value: !If [GuardDutyMalwareEnabled, storage, "off"]
+            - Name: ATTACHMENT_DIRECT_UPLOADS
+              Value: "true"
             - Name: AWS_REGION
               Value: !Ref AWS::Region
             - Name: AWS_KMS_KEY_ARN
@@ -1431,12 +1541,14 @@ Resources:
               Value: "true"
             - Name: CRON_TIMEZONE
               Value: Australia/Sydney
+            - Name: GRICK_BEDROCK_ENABLED
+              Value: !Ref EnableBedrock
             - Name: ALLOW_INSECURE_PUBLIC_URL
               Value: !If [HasCertificate, "false", "true"]
             - Name: SIGNUP_MODE
-              Value: open
+              Value: !Ref SignupMode
             - Name: NEXT_PUBLIC_SIGNUP_MODE
-              Value: open
+              Value: !Ref SignupMode
             - !If
               - HasSes
               - Name: EMAIL_PROVIDER
@@ -1460,6 +1572,10 @@ Resources:
               ValueFrom: !Sub "${RuntimeSecret}:AUTH_SECRET::"
             - Name: APP_SECRET
               ValueFrom: !Sub "${RuntimeSecret}:APP_SECRET::"
+            - Name: WORKFLOW_WEBHOOK_ENCRYPTION_KEY
+              ValueFrom: !Sub "${RuntimeSecret}:WORKFLOW_WEBHOOK_ENCRYPTION_KEY::"
+            - Name: CERTIFICATION_SIGNING_SECRET
+              ValueFrom: !Sub "${RuntimeSecret}:CERTIFICATION_SIGNING_SECRET::"
             - Name: NEXT_SERVER_ACTIONS_ENCRYPTION_KEY
               ValueFrom: !Sub "${RuntimeSecret}:NEXT_SERVER_ACTIONS_ENCRYPTION_KEY::"
           HealthCheck:
@@ -1499,6 +1615,7 @@ Resources:
           User: nextjs
           Privileged: false
           LinuxParameters:
+            InitProcessEnabled: true
             Capabilities:
               Drop:
                 - ALL
@@ -1544,12 +1661,14 @@ Resources:
               Value: "true"
             - Name: CRON_TIMEZONE
               Value: Australia/Sydney
+            - Name: GRICK_BEDROCK_ENABLED
+              Value: !Ref EnableBedrock
             - Name: ALLOW_INSECURE_PUBLIC_URL
               Value: !If [HasCertificate, "false", "true"]
             - Name: SIGNUP_MODE
-              Value: open
+              Value: !Ref SignupMode
             - Name: NEXT_PUBLIC_SIGNUP_MODE
-              Value: open
+              Value: !Ref SignupMode
             - !If
               - HasSes
               - Name: EMAIL_PROVIDER
@@ -1573,8 +1692,22 @@ Resources:
               ValueFrom: !Sub "${RuntimeSecret}:AUTH_SECRET::"
             - Name: APP_SECRET
               ValueFrom: !Sub "${RuntimeSecret}:APP_SECRET::"
+            - Name: WORKFLOW_WEBHOOK_ENCRYPTION_KEY
+              ValueFrom: !Sub "${RuntimeSecret}:WORKFLOW_WEBHOOK_ENCRYPTION_KEY::"
+            - Name: CERTIFICATION_SIGNING_SECRET
+              ValueFrom: !Sub "${RuntimeSecret}:CERTIFICATION_SIGNING_SECRET::"
             - Name: NEXT_SERVER_ACTIONS_ENCRYPTION_KEY
               ValueFrom: !Sub "${RuntimeSecret}:NEXT_SERVER_ACTIONS_ENCRYPTION_KEY::"
+          # Heartbeat file refreshed every 30 s after Redis answers PING
+          # (lib/jobs/worker-heartbeat.ts). StartPeriod covers the entrypoint migration.
+          HealthCheck:
+            Command:
+              - CMD-SHELL
+              - test $(( $(date +%s) - $(stat -c %Y /tmp/grick-worker-heartbeat) )) -lt 120
+            Interval: 30
+            Timeout: 5
+            Retries: 3
+            StartPeriod: 300
           LogConfiguration:
             LogDriver: awslogs
             Options:
@@ -1603,6 +1736,7 @@ Resources:
           User: nextjs
           Privileged: false
           LinuxParameters:
+            InitProcessEnabled: true
             Capabilities:
               Drop:
                 - ALL
@@ -1648,12 +1782,14 @@ Resources:
               Value: "true"
             - Name: CRON_TIMEZONE
               Value: Australia/Sydney
+            - Name: GRICK_BEDROCK_ENABLED
+              Value: !Ref EnableBedrock
             - Name: ALLOW_INSECURE_PUBLIC_URL
               Value: !If [HasCertificate, "false", "true"]
             - Name: SIGNUP_MODE
-              Value: open
+              Value: !Ref SignupMode
             - Name: NEXT_PUBLIC_SIGNUP_MODE
-              Value: open
+              Value: !Ref SignupMode
             - !If
               - HasSes
               - Name: EMAIL_PROVIDER
@@ -1677,6 +1813,10 @@ Resources:
               ValueFrom: !Sub "${RuntimeSecret}:AUTH_SECRET::"
             - Name: APP_SECRET
               ValueFrom: !Sub "${RuntimeSecret}:APP_SECRET::"
+            - Name: WORKFLOW_WEBHOOK_ENCRYPTION_KEY
+              ValueFrom: !Sub "${RuntimeSecret}:WORKFLOW_WEBHOOK_ENCRYPTION_KEY::"
+            - Name: CERTIFICATION_SIGNING_SECRET
+              ValueFrom: !Sub "${RuntimeSecret}:CERTIFICATION_SIGNING_SECRET::"
             - Name: NEXT_SERVER_ACTIONS_ENCRYPTION_KEY
               ValueFrom: !Sub "${RuntimeSecret}:NEXT_SERVER_ACTIONS_ENCRYPTION_KEY::"
           LogConfiguration:
@@ -1706,7 +1846,7 @@ Resources:
       DeploymentConfiguration:
         DeploymentCircuitBreaker:
           Enable: true
-          Rollback: false
+          Rollback: true
       NetworkConfiguration:
         AwsvpcConfiguration:
           AssignPublicIp: DISABLED
@@ -1738,7 +1878,7 @@ Resources:
       DeploymentConfiguration:
         DeploymentCircuitBreaker:
           Enable: true
-          Rollback: false
+          Rollback: true
       NetworkConfiguration:
         AwsvpcConfiguration:
           AssignPublicIp: DISABLED
@@ -1759,9 +1899,6 @@ Resources:
             Principal:
               Service: backup.amazonaws.com
             Action: sts:AssumeRole
-            Condition:
-              StringEquals:
-                aws:SourceAccount: !Ref AWS::AccountId
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/service-role/AWSBackupServiceRolePolicyForBackup
         - arn:aws:iam::aws:policy/AWSBackupServiceRolePolicyForS3Backup

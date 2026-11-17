@@ -2,12 +2,13 @@ apiVersion: v2
 name: grick
 description: Helm chart for deploying GRiCk to Kubernetes
 type: application
-version: 0.1.1
-appVersion: "0.1.0"
+version: 0.4.0
+# Keep equal to package.json "version" (tests/deploy/helm.test.ts checks it).
+appVersion: "2.1.0"
 keywords:
   - grc
   - compliance
   - ato
-home: https://github.com/yumaitau/GRiCk-aws-deploy
+home: https://github.com/yumaitau/GRiCk
 sources:
-  - https://github.com/yumaitau/GRiCk-aws-deploy
+  - https://github.com/yumaitau/GRiCk

@@ -109,6 +109,15 @@ resource "aws_ecs_task_definition" "worker" {
       command     = ["node", "dist/worker.cjs"]
       environment = concat(local.common_environment, local.ses_environment, local.marketplace_environment)
       secrets     = local.common_secrets
+      # Heartbeat file refreshed every 30 s after Redis answers PING
+      # (lib/jobs/worker-heartbeat.ts). startPeriod covers the entrypoint migration.
+      healthCheck = {
+        command     = ["CMD-SHELL", "test $(( $(date +%s) - $(stat -c %Y /tmp/grick-worker-heartbeat) )) -lt 120"]
+        interval    = 30
+        timeout     = 5
+        retries     = 3
+        startPeriod = 300
+      }
       logConfiguration = {
         logDriver = "awslogs"
         options = {

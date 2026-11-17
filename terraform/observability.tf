@@ -1,6 +1,77 @@
+# CloudWatch cannot use alias/aws/sns: grant the alarm service access to
+# a customer-managed key, scoped to alarms from this account.
+data "aws_iam_policy_document" "alarm_kms" {
+  # checkov:skip=CKV_AWS_111:KMS key policies require Resource * on the key itself
+  # checkov:skip=CKV_AWS_109:Account-root EnableIAM is the AWS default key-policy statement
+  # checkov:skip=CKV_AWS_356:KMS key policies require Resource * on the key itself
+  statement {
+    sid = "EnableAccountPermissions"
+    principals {
+      type        = "AWS"
+      identifiers = ["arn:${data.aws_partition.current.partition}:iam::${data.aws_caller_identity.current.account_id}:root"]
+    }
+    actions   = ["kms:*"]
+    resources = ["*"]
+  }
+
+  statement {
+    sid = "CloudWatchAlarmDelivery"
+    principals {
+      type        = "Service"
+      identifiers = ["cloudwatch.amazonaws.com"]
+    }
+    actions   = ["kms:Decrypt", "kms:GenerateDataKey*"]
+    resources = ["*"]
+    condition {
+      test     = "StringEquals"
+      variable = "aws:SourceAccount"
+      values   = [data.aws_caller_identity.current.account_id]
+    }
+    condition {
+      test     = "ArnLike"
+      variable = "aws:SourceArn"
+      values   = ["arn:${data.aws_partition.current.partition}:cloudwatch:${var.aws_region}:${data.aws_caller_identity.current.account_id}:alarm:*"]
+    }
+  }
+}
+
+resource "aws_kms_key" "alarms" {
+  description             = "GRiCk CloudWatch alarm delivery to SNS"
+  deletion_window_in_days = 7
+  enable_key_rotation     = true
+  policy                  = data.aws_iam_policy_document.alarm_kms.json
+}
+
 resource "aws_sns_topic" "alarms" {
   name              = "${local.name}-alarms"
-  kms_master_key_id = aws_kms_key.this.arn
+  kms_master_key_id = aws_kms_key.alarms.arn
+}
+
+data "aws_iam_policy_document" "alarm_topic" {
+  statement {
+    sid = "CloudWatchAlarmDelivery"
+    principals {
+      type        = "Service"
+      identifiers = ["cloudwatch.amazonaws.com"]
+    }
+    actions   = ["sns:Publish"]
+    resources = [aws_sns_topic.alarms.arn]
+    condition {
+      test     = "StringEquals"
+      variable = "aws:SourceAccount"
+      values   = [data.aws_caller_identity.current.account_id]
+    }
+    condition {
+      test     = "ArnLike"
+      variable = "aws:SourceArn"
+      values   = ["arn:${data.aws_partition.current.partition}:cloudwatch:${var.aws_region}:${data.aws_caller_identity.current.account_id}:alarm:*"]
+    }
+  }
+}
+
+resource "aws_sns_topic_policy" "alarms" {
+  arn    = aws_sns_topic.alarms.arn
+  policy = data.aws_iam_policy_document.alarm_topic.json
 }
 
 resource "aws_sns_topic_subscription" "alarms_email" {

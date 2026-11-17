@@ -5,7 +5,14 @@ metadata:
   name: {{ include "grick.fullname" . }}
   labels:
     {{- include "grick.labels" . | nindent 4 }}
-  {{- with .Values.ingress.annotations }}
+  {{- /* A null value unsets an annotation (Helm's way to remove a key), so it is not rendered. */}}
+  {{- $annotations := dict }}
+  {{- range $key, $value := .Values.ingress.annotations }}
+  {{- if not (kindIs "invalid" $value) }}
+  {{- $_ := set $annotations $key $value }}
+  {{- end }}
+  {{- end }}
+  {{- with $annotations }}
   annotations:
     {{- toYaml . | nindent 4 }}
   {{- end }}
@@ -19,7 +26,9 @@ spec:
   {{- end }}
   rules:
     {{- range .Values.ingress.hosts }}
-    - host: {{ .host | quote }}
+    - {{- if .host }}
+      host: {{ .host | quote }}
+      {{- end }}
       http:
         paths:
           {{- range .paths }}

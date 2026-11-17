@@ -51,7 +51,7 @@ resource "aws_vpc_security_group_ingress_rule" "alb" {
   lifecycle {
     precondition {
       condition = var.allow_internet_ingress || alltrue([
-        for cidr in var.allowed_ingress_cidrs : cidr != "0.0.0.0/0" && cidr != "::/0"
+        for cidr in var.allowed_ingress_cidrs : try(cidrnetmask(cidr) != "0.0.0.0", false)
       ])
       error_message = "0.0.0.0/0 and ::/0 are blocked on the ALB unless allow_internet_ingress is true."
     }

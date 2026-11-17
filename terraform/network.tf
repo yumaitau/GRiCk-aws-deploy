@@ -182,10 +182,14 @@ data "aws_iam_policy_document" "flow_logs" {
     actions = [
       "logs:CreateLogStream",
       "logs:PutLogEvents",
-      "logs:DescribeLogGroups",
       "logs:DescribeLogStreams",
     ]
     resources = ["${aws_cloudwatch_log_group.vpc_flow.arn}:*"]
+  }
+  statement {
+    effect    = "Allow"
+    actions   = ["logs:DescribeLogGroups"]
+    resources = ["*"]
   }
 }
 

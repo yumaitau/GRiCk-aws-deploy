@@ -123,6 +123,25 @@ data "aws_iam_policy_document" "task" {
     }
   }
 
+  # Amazon Bedrock for the in-account AI assistant (onboarding default). Cross-
+  # Region inference profiles route to foundation models in other Regions, so
+  # the model ARN uses a Region wildcard.
+  dynamic "statement" {
+    for_each = var.enable_bedrock ? [1] : []
+    content {
+      sid    = "InvokeBedrockClaude"
+      effect = "Allow"
+      actions = [
+        "bedrock:InvokeModel",
+        "bedrock:InvokeModelWithResponseStream",
+      ]
+      resources = [
+        "arn:${data.aws_partition.current.partition}:bedrock:*::foundation-model/anthropic.*",
+        "arn:${data.aws_partition.current.partition}:bedrock:${var.aws_region}:${data.aws_caller_identity.current.account_id}:inference-profile/*",
+      ]
+    }
+  }
+
   # AWS Marketplace container contract licensing. These APIs do not support
   # resource-level permissions; AWS documents Resource "*" in
   # AWSLicenseManagerConsumptionPolicy and the container License Manager guide.

@@ -18,6 +18,7 @@ data "aws_caller_identity" "current" {}
 data "aws_partition" "current" {}
 
 data "aws_availability_zones" "available" {
+  # checkov:skip=CKV_AWS_394:Buyers deploy in any region, so zone names cannot be pinned; the stack uses only the first two available zones (local.availability_zones)
   state = "available"
 }
 
@@ -63,15 +64,17 @@ locals {
     { name = "EVIDENCE_S3_BUCKET", value = aws_s3_bucket.evidence.id },
     { name = "EVIDENCE_S3_REGION", value = var.aws_region },
     { name = "EVIDENCE_MALWARE_SCAN_MODE", value = var.enable_guardduty_malware_protection ? "storage" : "off" },
+    { name = "ATTACHMENT_DIRECT_UPLOADS", value = "true" },
     { name = "AWS_REGION", value = var.aws_region },
     { name = "AWS_KMS_KEY_ARN", value = aws_kms_key.this.arn },
     { name = "GRICK_VALIDATE_RUNTIME_CONFIG", value = "true" },
     { name = "CRON_TIMEZONE", value = "Australia/Sydney" },
+    { name = "GRICK_BEDROCK_ENABLED", value = var.enable_bedrock ? "true" : "false" },
     { name = "ALLOW_INSECURE_PUBLIC_URL", value = var.certificate_arn == null ? "true" : "false" },
-    # First account may self-register and create the organisation. Switch both
-    # to invite_only after bootstrap if the buyer wants to block public sign-up.
-    { name = "SIGNUP_MODE", value = "open" },
-    { name = "NEXT_PUBLIC_SIGNUP_MODE", value = "open" },
+    # invite_only still admits the very first account (bootstrap exception), so
+    # the buyer can register the first administrator without opening sign-up.
+    { name = "SIGNUP_MODE", value = var.signup_mode },
+    { name = "NEXT_PUBLIC_SIGNUP_MODE", value = var.signup_mode },
   ]
 
   ses_environment = var.ses_from_email == "" ? [] : [
@@ -91,6 +94,8 @@ locals {
       "BETTER_AUTH_SECRET",
       "AUTH_SECRET",
       "APP_SECRET",
+      "WORKFLOW_WEBHOOK_ENCRYPTION_KEY",
+      "CERTIFICATION_SIGNING_SECRET",
       "NEXT_SERVER_ACTIONS_ENCRYPTION_KEY",
       ] : {
       name      = key

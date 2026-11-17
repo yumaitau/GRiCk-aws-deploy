@@ -2,7 +2,8 @@ replicaCount: 2
 
 image:
   repository: ghcr.io/yumaitau/grick
-  tag: "0.1.0"
+  # Empty uses the chart appVersion. Pin a digest-backed tag in production.
+  tag: ""
   pullPolicy: IfNotPresent
 
 imagePullSecrets: []
@@ -19,6 +20,10 @@ podLabels: {}
 
 podSecurityContext:
   runAsNonRoot: true
+  # The kubelet can only verify runAsNonRoot against a numeric user. Matches the
+  # image's USER 10001:10001 (Dockerfile).
+  runAsUser: 10001
+  runAsGroup: 10001
   seccompProfile:
     type: RuntimeDefault
 
@@ -37,10 +42,25 @@ env:
   CRON_TIMEZONE: Australia/Sydney
   PORT: "3000"
   S3_FORCE_PATH_STYLE: "false"
+  # Browser uploads attachments straight to S3 (s3 storage only). Needs a bucket CORS rule
+  # allowing POST from NEXT_PUBLIC_APP_URL and a lifecycle rule expiring
+  # ato-evidence/_pending-uploads/ after a day. When off, attachments are posted to the app
+  # and are limited by the ingress proxy-body-size below.
+  ATTACHMENT_DIRECT_UPLOADS: "false"
+  # Evidence storage: prefer storage.provider below. EVIDENCE_STORAGE_PROVIDER here
+  # (s3 | azure-blob) also satisfies the chart's object store check.
+  # EVIDENCE_STORAGE_PROVIDER: s3
   # The containers run with a read-only root filesystem, so npm must keep its
   # cache and logs under the writable /tmp mount instead of the home directory.
   NPM_CONFIG_CACHE: "/tmp/.npm"
   NPM_CONFIG_UPDATE_NOTIFIER: "false"
+
+# Comma separated sign-in emails of platform admins: they maintain the shared control
+# catalogues (ASD ISM OSCAL and starter catalogues) for every tenant and are the only
+# users who can create organisations. The address must be verified (email link, SSO or
+# SCIM). Empty adds nobody; tenant administrators are always refused. Sets
+# GRICK_PLATFORM_HOST_EMAILS.
+platformHostEmails: ""
 
 secretEnv:
   DATABASE_URL: ""
@@ -49,14 +69,65 @@ secretEnv:
   BETTER_AUTH_SECRET: ""
   AUTH_SECRET: ""
   APP_SECRET: ""
+  # Required in production: encrypts webhook signing secrets and connector credentials.
+  # At least 32 random characters, different from the auth secrets, and stable across
+  # releases (changing it needs WORKFLOW_WEBHOOK_ENCRYPTION_KEY_PREVIOUS; see docs/configuration.md).
+  WORKFLOW_WEBHOOK_ENCRYPTION_KEY: ""
+  # Assurance bundle integrity seal key; required in production, distinct from the auth secrets.
+  CERTIFICATION_SIGNING_SECRET: ""
   EMAIL_PROVIDER: "none"
-  STORAGE_PROVIDER: "local"
+
+# Evidence file storage. Rendering fails unless an object store is selected here
+# (or via env.EVIDENCE_STORAGE_PROVIDER / secretEnv.STORAGE_PROVIDER), because
+# /readyz fails in production on local storage and the root filesystem is read-only.
+storage:
+  # s3 or azure-blob. Leave empty only if the provider is set through env or secretEnv.
+  provider: ""
+  s3:
+    bucket: ""
+    region: ""
+  azure:
+    # The connection string is a secret: set AZURE_STORAGE_CONNECTION_STRING via
+    # secretEnv, existingSecret or externalSecret.
+    containerName: ""
+  # Local disk is per pod and not shared between replicas. Allowed only with
+  # replicaCount: 1. Sets ALLOW_LOCAL_EVIDENCE_STORAGE and mounts a writable
+  # volume at local.path for web and worker.
+  allowLocal: false
+  local:
+    path: /app/.uploads/ato-evidence
+    # Name of an existing PersistentVolumeClaim. Empty uses an emptyDir, which
+    # loses every evidence file when the pod is rescheduled.
+    existingClaim: ""
 
 existingSecret: ""
 extraEnvFrom: []
 extraEnv: []
 
+# Pull runtime secrets from AWS Secrets Manager via External Secrets Operator.
+# When enabled, set existingSecret to the target name so the chart Secret is skipped.
+externalSecret:
+  enabled: false
+  refreshInterval: 1h
+  secretStore:
+    name: aws-secretsmanager
+    kind: ClusterSecretStore
+  dataFrom: []
+  data: []
+
+
 web:
+  # Spread web replicas across nodes when possible. ScheduleAnyway keeps a
+  # single-node cluster schedulable.
+  topologySpreadConstraints:
+    - maxSkew: 1
+      topologyKey: kubernetes.io/hostname
+      whenUnsatisfiable: ScheduleAnyway
+      labelSelector:
+        matchLabels:
+          app.kubernetes.io/name: '{{ include "grick.name" . }}'
+          app.kubernetes.io/instance: '{{ .Release.Name }}'
+          app.kubernetes.io/component: web
   command: []
   args: []
   resources:
@@ -96,7 +167,16 @@ worker:
 
 migration:
   enabled: true
-  asHelmHook: true
+  # Ordinary release resource, created with the ConfigMap, Secret and ServiceAccount
+  # it reads. It runs alongside web and worker; the advisory lock in dist/migrate.cjs
+  # serialises their start-up migrations. A pre-install/pre-upgrade hook runs before
+  # those resources exist, so a first install with asHelmHook: true fails. Opt in only
+  # when upgrading an existing release whose ConfigMap, Secret and ServiceAccount
+  # already exist, and note the hook then reads the previous release's configuration.
+  # With asHelmHook: true the hook migrates before web and worker roll, so the chart
+  # sets SKIP_DB_MIGRATE=1 on them. With false they keep migrating on start, because
+  # the Job runs alongside them and they must not serve against an old schema.
+  asHelmHook: false
   args:
     - node
     - dist/migrate.cjs
@@ -116,6 +196,8 @@ ingress:
   enabled: false
   className: ""
   annotations:
+    # Covers the 25 MiB server-side upload limits. Larger attachments need
+    # ATTACHMENT_DIRECT_UPLOADS, which sends them straight to S3 instead.
     nginx.ingress.kubernetes.io/proxy-body-size: 25m
   hosts:
     - host: grick.example.com
@@ -133,6 +215,30 @@ redis:
   external:
     recommended: true
     note: Use managed Redis or Valkey in production (ElastiCache must set maxmemory-policy=noeviction) and provide REDIS_URL/VALKEY_URL. The worker deployment is the only BullMQ cron consumer.
+
+# Keeps one web pod up during node drains. Rendered only when replicaCount > 1.
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
+# Optional NetworkPolicy for web, worker and migration pods. Off by default
+# because selectors depend on the cluster's ingress controller and CNI.
+networkPolicy:
+  enabled: false
+  # Namespace labels of the ingress controller allowed to reach web on port 3000.
+  ingressNamespaceSelector:
+    matchLabels:
+      kubernetes.io/metadata.name: ingress-nginx
+  # Extra ingress peers for web (for example an ALB's VPC CIDR with target-type ip).
+  extraIngressFrom: []
+  # Egress ports allowed to any destination, besides DNS: Postgres, Redis/Valkey
+  # (TLS and plain) and HTTPS for S3, KMS, SES, Azure and licensing.
+  egressPorts:
+    - 5432
+    - 6379
+    - 6380
+    - 443
+  extraEgress: []
 
 nodeSelector: {}
 tolerations: []
