@@ -2,7 +2,11 @@
 set -euo pipefail
 
 script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
-evidence_file="${script_dir}/../marketplace/evidence/aws-fargate-deploy.md"
+if [[ -d "${script_dir}/../../../marketplace" ]]; then
+  evidence_file="${script_dir}/../../../marketplace/evidence/aws-fargate-deploy.md"
+else
+  evidence_file="${script_dir}/evidence/aws-fargate-deploy.md"
+fi
 terraform_args=("$@")
 
 for command in terraform aws jq curl; do
@@ -146,11 +150,15 @@ run_task() {
     --query 'tasks[0].containers[0].exitCode' \
     --output text)
   if [[ "${exit_code}" != "0" ]]; then
+    # run_task is called inside $(...), so anything on stdout is swallowed.
+    # Send the stop reason to stderr so the operator sees it.
+    echo "${label} task failed (exit code ${exit_code}): ${task_arn}" >&2
     aws ecs describe-tasks \
       --region "${region}" \
       --cluster "${cluster}" \
       --tasks "${task_arn}" \
-      --query 'tasks[0].{stoppedReason:stoppedReason,containers:containers[].{name:name,reason:reason,exitCode:exitCode}}'
+      --query 'tasks[0].{stoppedReason:stoppedReason,containers:containers[].{name:name,reason:reason,exitCode:exitCode}}' \
+      --output json >&2 || true
     dump_log_group "/ecs/${local_name}/migration"
     exit 1
   fi
@@ -165,7 +173,7 @@ proof_script="const {S3Client,PutObjectCommand}=require('@aws-sdk/client-s3');ne
 storage_overrides=$(jq -nc \
   --arg key "${proof_key}" \
   --arg script "${proof_script}" \
-  '{containerOverrides:[{name:"migration",command:["node","-e",$script],environment:[{name:"STORAGE_PROOF_KEY",value:$key}]}]}')
+  '{containerOverrides:[{name:"migration",command:["node","-e",$script],environment:[{name:"STORAGE_PROOF_KEY",value:$key},{name:"SKIP_DB_MIGRATE",value:"1"}]}]}')
 storage_task_arn=$(run_task "storage proof" "${storage_overrides}")
 
 if ! terraform apply -auto-approve "${terraform_args[@]}" -var enable_services=true; then

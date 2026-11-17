@@ -122,7 +122,7 @@ variable "allowed_ingress_cidrs" {
   description = "IPv4 CIDRs allowed to reach the ALB. Required. 0.0.0.0/0 is rejected unless allow_internet_ingress is true."
 
   validation {
-    condition     = length(var.allowed_ingress_cidrs) > 0 && alltrue([for cidr in var.allowed_ingress_cidrs : can(cidrhost(cidr, 0))])
+    condition     = length(var.allowed_ingress_cidrs) > 0 && alltrue([for cidr in var.allowed_ingress_cidrs : can(cidrnetmask(cidr))])
     error_message = "allowed_ingress_cidrs must contain at least one valid IPv4 CIDR."
   }
 }
@@ -264,7 +264,7 @@ variable "cache_snapshot_retention_days" {
 
   validation {
     condition     = var.cache_snapshot_retention_days >= 0 && var.cache_snapshot_retention_days <= 35 && floor(var.cache_snapshot_retention_days) == var.cache_snapshot_retention_days
-    error_message = "cache_snapshot_retention_days must be a whole number between 0 and 35."
+    error_message = "cache_snapshot_retention_days must be an integer between 0 and 35."
   }
 }
 
@@ -278,6 +278,12 @@ variable "enable_aws_backup" {
   type        = bool
   description = "Protect RDS through AWS Backup in addition to native retention."
   default     = false
+}
+
+variable "enable_bedrock" {
+  type        = bool
+  description = "Grant the ECS task role bedrock:InvokeModel on Anthropic Claude models so the onboarding default (Amazon Bedrock via the task role) works. Set false to omit the grant; onboarding then defaults AI to off."
+  default     = true
 }
 
 variable "enable_guardduty_malware_protection" {
@@ -318,6 +324,17 @@ variable "alarm_notification_email" {
   validation {
     condition     = var.alarm_notification_email == "" || can(regex("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$", var.alarm_notification_email))
     error_message = "alarm_notification_email must be empty or a valid email address."
+  }
+}
+
+variable "signup_mode" {
+  type        = string
+  description = "open or invite_only. invite_only still admits the first account, then requires an invitation."
+  default     = "invite_only"
+
+  validation {
+    condition     = contains(["open", "invite_only"], var.signup_mode)
+    error_message = "signup_mode must be open or invite_only."
   }
 }
 

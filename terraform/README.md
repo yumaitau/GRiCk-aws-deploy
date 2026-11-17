@@ -1,8 +1,8 @@
 # GRiCk on AWS ECS Fargate
 
-AWS Marketplace listing: https://aws.amazon.com/marketplace/pp?sku=8pjp6r3g4mw0nfmf8imsf9z1d
+AWS Marketplace listing: pending. The AWS Marketplace listing is planned and not yet public. Until then, this stack needs an image you are entitled to pull.
 
-Buyer launch path: clone https://github.com/yumaitau/GRiCk-aws-deploy and start from the repository README. Subscribe at https://aws.amazon.com/marketplace/pp?sku=8pjp6r3g4mw0nfmf8imsf9z1d before `terraform apply`.
+Buyers clone the public copy: https://github.com/yumaitau/GRiCk-aws-deploy (`terraform/` or `cloudformation/`). This directory is the in-repo Terraform source. Native CloudFormation lives in `deploy/cloudformation/aws-fargate`.
 
 Terraform reference stack for a buyer-owned deployment in `ap-southeast-2`:
 
@@ -13,9 +13,10 @@ Terraform reference stack for a buyer-owned deployment in `ap-southeast-2`:
 - GuardDuty Malware Protection for S3 on the evidence prefix, with scan-result object tags consumed by GRiCk quarantine controls.
 - Secrets Manager runtime secret, ECS execution role, and least-privilege S3 task role. No AWS access keys enter task definitions.
 - CloudWatch logs (KMS), Container Insights, VPC flow logs, ALB and S3 access logs, WAF (Anonymous IP / Common / Known Bad Inputs) with WAF logging, and CloudWatch alarms on an SNS topic.
+- The WAF counts, rather than blocks, the Common Rule Set `SizeRestrictions_BODY` rule. It blocks every body over 8 KB, which rejects evidence, import and policy uploads posted through the ALB, and WAF on an ALB inspects only the first 8 KB of a body. The app refuses declared bodies over 25 MB with 413. The other Common Rule Set body rules still block.
 - Optional AWS Backup. ElastiCache retains one daily snapshot by default.
 
-Amazon EKS buyers use the same Marketplace image via `../charts/grick` and `../charts/grick/values-aws-marketplace.yaml`.
+Amazon EKS buyers use the same Marketplace image via `charts/grick` and `charts/grick/values-aws-marketplace.yaml`.
 
 ## Prerequisites
 
@@ -32,18 +33,21 @@ Never put secrets in `terraform.tfvars`, shell history, or committed files. Terr
 
 Marketplace buyers: one `terraform apply`. Image entrypoint waits for Postgres,
 applies Drizzle migrations (advisory-locked across web+worker), then starts the
-task command. Secrets, RDS, Redis, and S3 are created by this stack. First
-visitor registers at `/sign-up` (`SIGNUP_MODE=open`) and creates the organisation
-at `/onboarding`. No seed admin is baked in. Consider Amazon Bedrock on that
+task command. Secrets, RDS, Redis, and S3 are created by this stack. The first
+account registers at `/sign-up` and creates the organisation at `/onboarding`.
+`signup_mode` defaults to `invite_only`, which still admits that first account
+(bootstrap exception); colleagues then join by invitation. No seed admin is baked in. Consider Amazon Bedrock on that
 form for in-account AI (Claude in your Region via the task role): ATO explainers,
 risk summaries, evidence-gap review, and ITSA/CISO draft briefs. Enable the
-model in Bedrock model access. Leave `ses_from_email` empty until
+model in Bedrock model access. The stack grants the task role
+`bedrock:InvokeModel` on Anthropic models unless `enable_bedrock = false`. Leave `ses_from_email` empty until
 that first account exists — production email verification turns on only when SES
-(or another provider) is configured. Set `SIGNUP_MODE=invite_only` later to lock
-public registration.
+(or another provider) is configured. Set `signup_mode = "open"` only for a
+deliberate public service. `signup_mode` sets both `SIGNUP_MODE` (which controls
+the server) and `NEXT_PUBLIC_SIGNUP_MODE`.
 
 ```sh
-cd terraform
+cd deploy/terraform/aws-fargate
 cp terraform.tfvars.example terraform.tfvars
 # Pin container_image to a 1.0.3+ Marketplace ECR digest. Do not set a GHCR pull secret.
 terraform init
@@ -59,6 +63,29 @@ enough to launch.
 Use `terraform plan` / `terraform apply` for later infrastructure changes. The
 entrypoint migrates on every task start; a separate migration task is still
 available if you want an explicit pre-roll.
+
+## Local dogfood profile
+
+`dogfood.tfvars.example` records the non-secret inputs from the local dogfood
+setup, with a published immutable image and restricted placeholder ingress.
+It describes a disposable `grick-dogfood` stack with single-AZ data services,
+AWS Backup disabled, and destructive teardown enabled. Review the production
+switches below before retaining real data. The default ALB uses HTTP until
+`app_url` and `certificate_arn` configure HTTPS.
+
+Copy it to an ignored local file without overwriting existing inputs:
+
+```sh
+cp -n dogfood.tfvars.example dogfood.tfvars
+# Replace the documentation CIDR with your office/VPN IPv4 CIDRs.
+terraform plan -var-file=dogfood.tfvars
+```
+
+Review the account, Region, costs, and plan before applying. This profile does
+not create the `grick-prod` or `grick-buyer` targets used by GitHub Actions.
+Local `*.tfvars`, saved `*.tfplan`, and state files remain uncommitted because
+they can contain deployment-specific values or generated secrets. Generate a
+new plan when source or inputs change; a saved plan is not a source artifact.
 
 ## Outputs
 
@@ -93,7 +120,7 @@ Leave these unset until the buyer chooses them. First `/sign-up` works without e
 | HTTPS | `certificate_arn` + `app_url` | HTTP ALB. `ALLOW_INSECURE_PUBLIC_URL=true`. Fine for a proof run. |
 | Outbound email | `ses_from_email` (verified SES identity) | No mail. Invites and password reset stay in-app. Stack does not attach `ses:SendEmail` until this is set. |
 
-Amazon EKS buyers do **not** get RDS/Redis/S3 from this module. They provision those plus IRSA themselves (`../charts/grick/values-aws-marketplace.yaml`).
+Amazon EKS buyers do **not** get RDS/Redis/S3 from this module. They provision those plus IRSA themselves (`charts/grick/values-aws-marketplace.yaml`).
 
 ## Production switches
 
@@ -140,3 +167,5 @@ GRICK_ALLOW_DESTROY=yes ./destroy.sh -var-file=terraform.tfvars
 ```
 
 `database_deletion_protection=true`, `force_destroy_backup_vault=false`, and `force_destroy_evidence_bucket=false` intentionally block destructive production teardown. Disable protection only after approved backup/export, retained recovery points, and evidence disposition. Test defaults skip the final RDS snapshot and allow test evidence/recovery-point deletion so ALB, NAT, RDS, and cache costs do not linger.
+
+Access logs expire after 90 days (noncurrent log versions after 30 days). Noncurrent evidence versions expire after 90 days; current evidence is retained. Review these lifecycle rules against buyer retention requirements before applying. Confirm the SNS email subscription and exercise alarm delivery after deployment.

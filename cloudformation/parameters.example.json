@@ -9,14 +9,10 @@
   },
   {
     "ParameterKey": "ContainerImage",
-    "ParameterValue": "709825985650.dkr.ecr.us-east-1.amazonaws.com/yuma-it/grick-aws:1.0.8"
+    "ParameterValue": "709825985650.dkr.ecr.us-east-1.amazonaws.com/yuma-it/grick-aws:2.1.0"
   },
   {
     "ParameterKey": "AllowedIngressCidr",
     "ParameterValue": "203.0.113.0/24"
-  },
-  {
-    "ParameterKey": "AllowInternetIngress",
-    "ParameterValue": "false"
   }
 ]

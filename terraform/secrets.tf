@@ -13,9 +13,23 @@ resource "random_password" "app" {
   special = false
 }
 
-resource "random_password" "server_actions" {
+# Dedicated key for webhook signing secrets and connector credentials (#681). Never derived from
+# the auth secrets, so rotating them leaves stored secrets readable.
+resource "random_password" "workflow_webhook_encryption" {
   length  = 48
   special = false
+}
+
+# Assurance bundle integrity seal key (#547): its own value, never the auth secret.
+resource "random_password" "certification_signing" {
+  length  = 48
+  special = false
+}
+
+# Next decodes NEXT_SERVER_ACTIONS_ENCRYPTION_KEY with atob and imports it as a
+# raw AES-GCM key, so it must be base64 of 16, 24 or 32 bytes.
+resource "random_bytes" "server_actions" {
+  length = 32
 }
 
 resource "aws_secretsmanager_secret" "runtime" {
@@ -34,7 +48,9 @@ resource "aws_secretsmanager_secret_version" "runtime" {
     BETTER_AUTH_SECRET                 = random_password.better_auth.result
     AUTH_SECRET                        = random_password.auth.result
     APP_SECRET                         = random_password.app.result
-    NEXT_SERVER_ACTIONS_ENCRYPTION_KEY = random_password.server_actions.result
+    WORKFLOW_WEBHOOK_ENCRYPTION_KEY    = random_password.workflow_webhook_encryption.result
+    CERTIFICATION_SIGNING_SECRET       = random_password.certification_signing.result
+    NEXT_SERVER_ACTIONS_ENCRYPTION_KEY = random_bytes.server_actions.base64
   })
 }
 

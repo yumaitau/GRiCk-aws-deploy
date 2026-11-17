@@ -25,6 +25,10 @@ allow_internet_ingress = false
 # SES identity is verified. Empty = working install, no mail.
 # ses_from_email = "GRiCk <no-reply@example.com>"
 
+# Sign-up mode. invite_only (default) admits the first account at /sign-up,
+# then colleagues join by invitation. Use "open" only for a deliberate public service.
+# signup_mode = "invite_only"
+
 # Optional operations alarm destination. Empty still creates the SNS topic.
 # alarm_notification_email = "ops@example.com"
 

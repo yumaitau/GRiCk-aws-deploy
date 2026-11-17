@@ -24,12 +24,6 @@ mock_provider "aws" {
       json = "{\"Version\":\"2012-10-17\",\"Statement\":[]}"
     }
   }
-
-  mock_resource "aws_kms_key" {
-    defaults = {
-      arn = "arn:aws:kms:ap-southeast-2:123456789012:key/00000000-0000-0000-0000-000000000000"
-    }
-  }
 }
 
 mock_provider "random" {
@@ -95,17 +89,17 @@ run "secure_test_baseline" {
   assert {
     condition = anytrue([
       for variable in local.common_environment :
-      variable.name == "SIGNUP_MODE" && variable.value == "open"
+      variable.name == "SIGNUP_MODE" && variable.value == "invite_only"
     ])
-    error_message = "Fargate tasks must allow the first administrator to self-register."
+    error_message = "Fargate tasks must default to invite-only sign-up (the first account is still admitted)."
   }
 
   assert {
     condition = anytrue([
       for variable in local.common_environment :
-      variable.name == "NEXT_PUBLIC_SIGNUP_MODE" && variable.value == "open"
+      variable.name == "NEXT_PUBLIC_SIGNUP_MODE" && variable.value == "invite_only"
     ])
-    error_message = "Fargate tasks must advertise open sign-up for the first administrator."
+    error_message = "Fargate tasks must advertise invite-only sign-up by default."
   }
 
   assert {
@@ -200,15 +194,29 @@ run "secure_test_baseline" {
   }
 
   assert {
-    condition     = aws_sns_topic.alarms.kms_master_key_id == aws_kms_key.this.arn
-    error_message = "CloudWatch alarm notifications must use the stack customer-managed key."
-  }
-
-  assert {
     condition = anytrue([
       for rule in aws_wafv2_web_acl.this[0].rule : rule.name == "AWSManagedRulesAnonymousIpList"
     ])
     error_message = "WAF must include the Anonymous IP managed rule group."
+  }
+
+  assert {
+    condition = anytrue([
+      for rule in aws_wafv2_web_acl.this[0].rule : rule.name == "AWSManagedRulesCommonRuleSet" && anytrue([
+        for override in rule.statement[0].managed_rule_group_statement[0].rule_action_override :
+        override.name == "SizeRestrictions_BODY" && length(override.action_to_use[0].count) == 1
+      ])
+    ])
+    error_message = "WAF must count, not block, Common Rule Set SizeRestrictions_BODY so uploads over 8 KB reach the app."
+  }
+}
+
+run "server_actions_key_is_aes_sized" {
+  command = plan
+
+  assert {
+    condition     = random_bytes.server_actions.length == 32
+    error_message = "NEXT_SERVER_ACTIONS_ENCRYPTION_KEY must be base64 of 32 random bytes (a valid AES-256 key)."
   }
 }
 
@@ -231,6 +239,76 @@ run "guardduty_explicit_opt_out" {
     ])
     error_message = "Explicit GuardDuty opt-out must disable storage scan-tag enforcement."
   }
+}
+
+run "bedrock_granted_by_default" {
+  command = plan
+
+  assert {
+    condition = anytrue([
+      for statement in data.aws_iam_policy_document.task.statement :
+      statement.sid == "InvokeBedrockClaude" && contains(statement.actions, "bedrock:InvokeModel")
+    ])
+    error_message = "Task role must grant bedrock:InvokeModel by default to match the onboarding default."
+  }
+
+  assert {
+    condition = anytrue([
+      for variable in local.common_environment :
+      variable.name == "GRICK_BEDROCK_ENABLED" && variable.value == "true"
+    ])
+    error_message = "Task environment must tell onboarding that Bedrock is granted."
+  }
+}
+
+run "bedrock_explicit_opt_out" {
+  command = plan
+
+  variables {
+    enable_bedrock = false
+  }
+
+  assert {
+    condition = !anytrue([
+      for statement in data.aws_iam_policy_document.task.statement :
+      contains(statement.actions, "bedrock:InvokeModel")
+    ])
+    error_message = "enable_bedrock = false must omit the Bedrock grant."
+  }
+
+  assert {
+    condition = anytrue([
+      for variable in local.common_environment :
+      variable.name == "GRICK_BEDROCK_ENABLED" && variable.value == "false"
+    ])
+    error_message = "enable_bedrock = false must turn the onboarding Bedrock default off."
+  }
+}
+
+run "signup_mode_open_when_explicit" {
+  command = plan
+
+  variables {
+    signup_mode = "open"
+  }
+
+  assert {
+    condition = alltrue([
+      for name in ["SIGNUP_MODE", "NEXT_PUBLIC_SIGNUP_MODE"] :
+      anytrue([for variable in local.common_environment : variable.name == name && variable.value == "open"])
+    ])
+    error_message = "signup_mode = open must set both sign-up variables to open."
+  }
+}
+
+run "reject_unknown_signup_mode" {
+  command = plan
+
+  variables {
+    signup_mode = "closed"
+  }
+
+  expect_failures = [var.signup_mode]
 }
 
 run "reject_world_open_ingress" {
@@ -330,12 +408,55 @@ run "reject_unproven_region" {
   expect_failures = [var.aws_region]
 }
 
-run "reject_fractional_cache_snapshot_retention" {
+run "reject_noncanonical_world_open_ingress" {
+  command = plan
+  variables {
+    allowed_ingress_cidrs = ["192.0.2.1/0"]
+  }
+  expect_failures = [aws_vpc_security_group_ingress_rule.alb]
+}
+
+run "reject_ipv6_ingress" {
+  command = plan
+  variables {
+    allowed_ingress_cidrs = ["2001:db8::/32"]
+  }
+  expect_failures = [var.allowed_ingress_cidrs]
+}
+
+run "reject_fractional_snapshot_retention" {
+  command = plan
+  variables {
+    cache_snapshot_retention_days = 1.5
+  }
+  expect_failures = [var.cache_snapshot_retention_days]
+}
+
+run "direct_attachment_uploads" {
   command = plan
 
   variables {
-    cache_snapshot_retention_days = 0.5
+    app_url = "https://grick.example.com/"
   }
 
-  expect_failures = [var.cache_snapshot_retention_days]
+  assert {
+    condition = (
+      one(aws_s3_bucket_cors_configuration.evidence.cors_rule).allowed_origins == toset(["https://grick.example.com"]) &&
+      one(aws_s3_bucket_cors_configuration.evidence.cors_rule).allowed_methods == toset(["POST"])
+    )
+    error_message = "Evidence bucket CORS must allow only POST from the app origin."
+  }
+
+  assert {
+    condition = anytrue([
+      for rule in aws_s3_bucket_lifecycle_configuration.evidence.rule :
+      rule.id == "expire-pending-uploads" && one(rule.filter).prefix == "ato-evidence/_pending-uploads/" && one(rule.expiration).days == 1
+    ])
+    error_message = "Unconfirmed browser uploads must expire after a day."
+  }
+
+  assert {
+    condition     = contains(local.common_environment, { name = "ATTACHMENT_DIRECT_UPLOADS", value = "true" })
+    error_message = "Fargate deployments must enable direct attachment uploads."
+  }
 }

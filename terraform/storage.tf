@@ -42,36 +42,6 @@ data "aws_iam_policy_document" "kms" {
       ]
     }
   }
-
-  statement {
-    sid    = "CloudWatchAlarms"
-    effect = "Allow"
-
-    principals {
-      type        = "Service"
-      identifiers = ["cloudwatch.amazonaws.com"]
-    }
-
-    actions = [
-      "kms:Decrypt",
-      "kms:GenerateDataKey*",
-    ]
-    resources = ["*"]
-
-    condition {
-      test     = "StringEquals"
-      variable = "aws:SourceAccount"
-      values   = [data.aws_caller_identity.current.account_id]
-    }
-
-    condition {
-      test     = "ArnLike"
-      variable = "aws:SourceArn"
-      values = [
-        "arn:${data.aws_partition.current.partition}:cloudwatch:${var.aws_region}:${data.aws_caller_identity.current.account_id}:alarm:*",
-      ]
-    }
-  }
 }
 
 resource "aws_kms_key" "this" {
@@ -161,7 +131,8 @@ resource "aws_s3_bucket_policy" "evidence" {
 }
 
 resource "aws_s3_bucket_lifecycle_configuration" "evidence" {
-  bucket = aws_s3_bucket.evidence.id
+  bucket     = aws_s3_bucket.evidence.id
+  depends_on = [aws_s3_bucket_versioning.evidence]
 
   rule {
     id     = "evidence-maintenance"
@@ -176,6 +147,38 @@ resource "aws_s3_bucket_lifecycle_configuration" "evidence" {
     noncurrent_version_expiration {
       noncurrent_days = 90
     }
+  }
+
+  # Browser uploads land here first; the app moves confirmed ones into place.
+  # Anything never confirmed is abandoned.
+  rule {
+    id     = "expire-pending-uploads"
+    status = "Enabled"
+
+    filter {
+      prefix = "ato-evidence/_pending-uploads/"
+    }
+
+    expiration {
+      days = 1
+    }
+
+    noncurrent_version_expiration {
+      noncurrent_days = 1
+    }
+  }
+}
+
+# Lets the browser POST attachments straight to the bucket under a signed policy
+# (ATTACHMENT_DIRECT_UPLOADS). Nothing is readable cross-origin.
+resource "aws_s3_bucket_cors_configuration" "evidence" {
+  bucket = aws_s3_bucket.evidence.id
+
+  cors_rule {
+    allowed_methods = ["POST"]
+    allowed_origins = [trimsuffix(local.application_url, "/")]
+    allowed_headers = ["*"]
+    max_age_seconds = 3000
   }
 }
 
@@ -224,7 +227,8 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "logs" {
 }
 
 resource "aws_s3_bucket_lifecycle_configuration" "logs" {
-  bucket = aws_s3_bucket.logs.id
+  bucket     = aws_s3_bucket.logs.id
+  depends_on = [aws_s3_bucket_versioning.logs]
 
   rule {
     id     = "expire-access-logs"
@@ -282,9 +286,9 @@ data "aws_iam_policy_document" "logs_bucket" {
     resources = ["${aws_s3_bucket.logs.arn}/alb/AWSLogs/${data.aws_caller_identity.current.account_id}/*"]
 
     condition {
-      test     = "StringEquals"
-      variable = "aws:SourceAccount"
-      values   = [data.aws_caller_identity.current.account_id]
+      test     = "ArnLike"
+      variable = "aws:SourceArn"
+      values   = ["arn:${data.aws_partition.current.partition}:elasticloadbalancing:${var.aws_region}:${data.aws_caller_identity.current.account_id}:loadbalancer/*"]
     }
   }
 
