@@ -45,8 +45,11 @@ data "aws_iam_policy_document" "kms" {
 }
 
 resource "aws_kms_key" "this" {
-  description             = "GRiCk ${var.environment} data encryption"
-  deletion_window_in_days = 7
+  description = "GRiCk ${var.environment} data encryption"
+  # The final RDS snapshot and AWS Backup recovery points are encrypted with this key.
+  # When a final snapshot is kept, give the key the maximum 30-day deletion window so a
+  # snapshot can still be restored (cancel the key deletion first) after `terraform destroy`.
+  deletion_window_in_days = var.skip_final_database_snapshot ? 7 : 30
   enable_key_rotation     = true
   policy                  = data.aws_iam_policy_document.kms.json
 }

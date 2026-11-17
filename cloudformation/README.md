@@ -4,7 +4,7 @@ Native CloudFormation for buyers who do not want Terraform. Same first-launch sh
 
 Hardening carried over from Terraform: KMS-encrypted ECS, WAF and VPC flow log groups; VPC flow logs (ALL); ALB access logs to a separate SSE-S3 logs bucket; WAF Anonymous IP, Common and Known Bad Inputs rules with WAF logging (authorization, cookie and x-api-key redacted); container init process; ECS role trust scoped by `aws:SourceAccount` and `aws:SourceArn`; SES send scoped to identities in the stack account and Region; optional RDS and ALB deletion protection.
 
-Not in CloudFormation (Terraform only): CloudWatch alarms and the SNS topic, S3 access logging on the evidence bucket, and per-AZ NAT.
+Not in CloudFormation (Terraform only): CloudWatch alarms and the SNS topic, and per-AZ NAT. The evidence bucket logs S3 access to the logs bucket under `s3/evidence/`, as in Terraform.
 
 The AWS Marketplace listing is planned and not yet public. Once it is public, subscribe to the listing before you create the stack. The image is Marketplace ECR, not GHCR.
 
@@ -23,14 +23,20 @@ When the stack is `CREATE_COMPLETE`, open the `ApplicationUrl` output. First use
 
 ## CLI
 
+The template is larger than the 51,200-byte limit for `--template-body`, so upload it to an S3 bucket you own in the target Region and pass its URL.
+
 ```sh
-cd deploy/cloudformation/aws-fargate
+cd cloudformation  # in a GRiCk source checkout: cd deploy/cloudformation/aws-fargate
 cp parameters.example.json parameters.json
 # edit MarketplaceProductCode, MarketplaceProductSku, ContainerImage, AllowedIngressCidr
 
+TEMPLATE_BUCKET=replace-with-your-template-bucket
+TEMPLATE_REGION=ap-southeast-2  # the bucket's Region
+aws s3 cp grick-fargate.yaml "s3://${TEMPLATE_BUCKET}/grick-fargate.yaml"
+
 aws cloudformation create-stack \
   --stack-name grick \
-  --template-body file://grick-fargate.yaml \
+  --template-url "https://${TEMPLATE_BUCKET}.s3.${TEMPLATE_REGION}.amazonaws.com/grick-fargate.yaml" \
   --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM \
   --parameters file://parameters.json
 
@@ -69,4 +75,4 @@ aws cloudformation delete-stack --stack-name grick
 aws cloudformation wait stack-delete-complete --stack-name grick
 ```
 
-RDS uses `DeletionPolicy: Snapshot` and `UpdateReplacePolicy: Snapshot`: deleting the stack, or an update that replaces the instance, leaves a final DB snapshot. The snapshot is kept (and billed) after the stack is gone; delete it in the RDS console when you no longer need it. The ALB logs bucket is retained on delete; empty and remove it yourself when you no longer need the request history.
+RDS uses `DeletionPolicy: Snapshot` and `UpdateReplacePolicy: Snapshot`: deleting the stack, or an update that replaces the instance, leaves a final DB snapshot. The snapshot is kept (and billed) after the stack is gone; delete it in the RDS console when you no longer need it. The KMS key (`EncryptionKey`) is also retained on delete and replacement, because the snapshot and any AWS Backup recovery points cannot be restored without it; schedule its deletion in the KMS console only after you have deleted them. The ALB logs bucket is retained on delete; empty and remove it yourself when you no longer need the request history.

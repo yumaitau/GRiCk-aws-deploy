@@ -47,7 +47,7 @@ deliberate public service. `signup_mode` sets both `SIGNUP_MODE` (which controls
 the server) and `NEXT_PUBLIC_SIGNUP_MODE`.
 
 ```sh
-cd deploy/terraform/aws-fargate
+cd terraform  # in a GRiCk source checkout: cd deploy/terraform/aws-fargate
 cp terraform.tfvars.example terraform.tfvars
 # Pin container_image to a 1.0.3+ Marketplace ECR digest. Do not set a GHCR pull secret.
 terraform init
@@ -64,25 +64,8 @@ Use `terraform plan` / `terraform apply` for later infrastructure changes. The
 entrypoint migrates on every task start; a separate migration task is still
 available if you want an explicit pre-roll.
 
-## Local dogfood profile
+## Local inputs
 
-`dogfood.tfvars.example` records the non-secret inputs from the local dogfood
-setup, with a published immutable image and restricted placeholder ingress.
-It describes a disposable `grick-dogfood` stack with single-AZ data services,
-AWS Backup disabled, and destructive teardown enabled. Review the production
-switches below before retaining real data. The default ALB uses HTTP until
-`app_url` and `certificate_arn` configure HTTPS.
-
-Copy it to an ignored local file without overwriting existing inputs:
-
-```sh
-cp -n dogfood.tfvars.example dogfood.tfvars
-# Replace the documentation CIDR with your office/VPN IPv4 CIDRs.
-terraform plan -var-file=dogfood.tfvars
-```
-
-Review the account, Region, costs, and plan before applying. This profile does
-not create the `grick-prod` or `grick-buyer` targets used by GitHub Actions.
 Local `*.tfvars`, saved `*.tfplan`, and state files remain uncommitted because
 they can contain deployment-specific values or generated secrets. Generate a
 new plan when source or inputs change; a saved plan is not a source artifact.
@@ -166,6 +149,6 @@ Test stack destroy is guarded and uses the same variable arguments as bootstrap:
 GRICK_ALLOW_DESTROY=yes ./destroy.sh -var-file=terraform.tfvars
 ```
 
-`database_deletion_protection=true`, `force_destroy_backup_vault=false`, and `force_destroy_evidence_bucket=false` intentionally block destructive production teardown. Disable protection only after approved backup/export, retained recovery points, and evidence disposition. Test defaults skip the final RDS snapshot and allow test evidence/recovery-point deletion so ALB, NAT, RDS, and cache costs do not linger.
+`database_deletion_protection=true`, `force_destroy_backup_vault=false`, and `force_destroy_evidence_bucket=false` intentionally block destructive production teardown. Disable protection only after approved backup/export, retained recovery points, and evidence disposition. Test defaults skip the final RDS snapshot and allow test evidence/recovery-point deletion so ALB, NAT, RDS, and cache costs do not linger. With `skip_final_database_snapshot=false`, the data key gets a 30-day deletion window instead of 7: the final snapshot is encrypted with it, so cancel the key deletion (`aws kms cancel-key-deletion`) before restoring that snapshot.
 
 Access logs expire after 90 days (noncurrent log versions after 30 days). Noncurrent evidence versions expire after 90 days; current evidence is retained. Review these lifecycle rules against buyer retention requirements before applying. Confirm the SNS email subscription and exercise alarm delivery after deployment.

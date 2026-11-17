@@ -220,6 +220,28 @@ run "server_actions_key_is_aes_sized" {
   }
 }
 
+run "data_key_outlives_a_kept_final_snapshot" {
+  command = plan
+
+  variables {
+    skip_final_database_snapshot = false
+  }
+
+  assert {
+    condition     = aws_kms_key.this.deletion_window_in_days == 30
+    error_message = "A kept final RDS snapshot is encrypted with the data key, so the key must get the maximum 30-day deletion window."
+  }
+}
+
+run "data_key_short_window_for_test_teardown" {
+  command = plan
+
+  assert {
+    condition     = aws_kms_key.this.deletion_window_in_days == 7
+    error_message = "Test teardown (no final snapshot) keeps the 7-day key deletion window."
+  }
+}
+
 run "guardduty_explicit_opt_out" {
   command = plan
 
@@ -450,7 +472,8 @@ run "direct_attachment_uploads" {
   assert {
     condition = anytrue([
       for rule in aws_s3_bucket_lifecycle_configuration.evidence.rule :
-      rule.id == "expire-pending-uploads" && one(rule.filter).prefix == "ato-evidence/_pending-uploads/" && one(rule.expiration).days == 1
+      # Other rules have no expiration block, and && does not short-circuit.
+      try(rule.id == "expire-pending-uploads" && one(rule.filter).prefix == "ato-evidence/_pending-uploads/" && one(rule.expiration).days == 1, false)
     ])
     error_message = "Unconfirmed browser uploads must expire after a day."
   }

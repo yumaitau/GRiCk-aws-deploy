@@ -43,11 +43,14 @@ spec:
           protocol: UDP
         - port: 53
           protocol: TCP
+    {{- /* An empty ports list means every port to every destination, so emit the rule only with ports. */}}
+    {{- with .Values.networkPolicy.egressPorts }}
     - ports:
-        {{- range .Values.networkPolicy.egressPorts }}
+        {{- range . }}
         - port: {{ . }}
           protocol: TCP
         {{- end }}
+    {{- end }}
     {{- with .Values.networkPolicy.extraEgress }}
     {{- toYaml . | nindent 4 }}
     {{- end }}

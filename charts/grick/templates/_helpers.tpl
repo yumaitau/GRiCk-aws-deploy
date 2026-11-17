@@ -37,14 +37,18 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end -}}
 
 {{/*
-Resolved evidence storage provider, in the order the app reads it
-(lib/storage/evidence-files.ts): storage.provider, EVIDENCE_STORAGE_PROVIDER,
-STORAGE_PROVIDER, then s3 when a bucket is set.
+Resolved evidence storage provider, as the containers receive it and the app
+reads it (lib/storage/provider.ts): EVIDENCE_STORAGE_PROVIDER, then
+STORAGE_PROVIDER, then s3 when a bucket is set. envFrom loads the ConfigMap
+then the Secret, so secretEnv overrides env for the same key, and in the
+ConfigMap env overrides storage.provider (see grick.storage.configData).
+secretEnv only reaches the pods when the chart renders the Secret.
 */}}
 {{- define "grick.storage.provider" -}}
 {{- $env := .Values.env | default dict -}}
-{{- $secretEnv := .Values.secretEnv | default dict -}}
-{{- $explicit := coalesce .Values.storage.provider $env.EVIDENCE_STORAGE_PROVIDER $secretEnv.EVIDENCE_STORAGE_PROVIDER $env.STORAGE_PROVIDER $secretEnv.STORAGE_PROVIDER | default "" | toString | trim | lower -}}
+{{- $secretEnv := dict -}}
+{{- if not .Values.existingSecret }}{{ $secretEnv = .Values.secretEnv | default dict }}{{ end -}}
+{{- $explicit := coalesce $secretEnv.EVIDENCE_STORAGE_PROVIDER $env.EVIDENCE_STORAGE_PROVIDER .Values.storage.provider $secretEnv.STORAGE_PROVIDER $env.STORAGE_PROVIDER | default "" | toString | trim | lower -}}
 {{- if $explicit -}}
 {{- $explicit -}}
 {{- else if coalesce .Values.storage.s3.bucket $env.EVIDENCE_S3_BUCKET $env.S3_BUCKET $secretEnv.EVIDENCE_S3_BUCKET $secretEnv.S3_BUCKET -}}

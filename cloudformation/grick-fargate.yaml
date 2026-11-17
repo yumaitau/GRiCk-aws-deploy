@@ -235,6 +235,11 @@ Conditions:
 Resources:
   EncryptionKey:
     Type: AWS::KMS::Key
+    # The final RDS snapshot (Database DeletionPolicy: Snapshot) and any AWS Backup
+    # recovery points are encrypted with this key and cannot be restored without it,
+    # so it outlives the stack. Schedule its deletion only after removing them.
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
       Description: !Sub "GRiCk ${Environment} data encryption"
       EnableKeyRotation: true
